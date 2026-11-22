@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 from backend import db
 from backend.config import load_config
 from backend.engine import orchestrator, stubs
+from backend.web.anthropic_transport import configure_llm
 
 FINISHED = {"awaiting_approval", "done", "held", "awaiting_candidate", "failed"}
 
@@ -116,6 +117,7 @@ def write_json_atomic(path: str, data: dict):
 def run_cli(input_path: str, output_path: str, parallel: int = 1) -> dict:
     load_dotenv()
     db.init_db()
+    configure_llm()
     cfg = load_config()
     resumed = db.requeue_interrupted_runs()      # runs killed mid-way last time -> queued again
     if resumed:

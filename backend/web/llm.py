@@ -12,6 +12,7 @@ import uuid
 from jsonschema import Draft202012Validator, ValidationError
 
 from backend import db
+from backend.data import ledger
 
 _transport = None
 _settings = None
@@ -45,14 +46,8 @@ def _record(run_id, settings, version, response, latency):
     if any(type(n) is not int or n < 0 for n in (tokens_in, tokens_out)):
         raise ValueError("Provider usage must contain nonnegative integer token counts")
     cost = (tokens_in * settings["input_rate"] + tokens_out * settings["output_rate"]) / 1_000_000
-    with db.connect() as conn:
-        conn.execute(
-            """INSERT INTO ledger (run_id, provider, endpoint_or_model, prompt_version,
-               tokens_in, tokens_out, cost_inr, latency_ms, http_status, ts)
-               VALUES (?, 'llm', ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (run_id, settings["model"], version, tokens_in, tokens_out, cost, latency,
-             response.get("http_status"), db.now()))
-        conn.execute("UPDATE runs SET cost_inr = cost_inr + ? WHERE id = ?", (cost, run_id))
+    ledger.record(run_id, "llm", settings["model"], prompt_version=version, tokens_in=tokens_in,
+                  tokens_out=tokens_out, cost_inr=cost, latency_ms=latency, http_status=response.get("http_status"))
 
 
 async def llm_json(run_id, purpose, system, user, schema, prompt_version):

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from backend import db
 from backend.config import load_config
 from backend.engine import orchestrator
+from backend.web.anthropic_transport import configure_llm
 
 load_dotenv()
 
@@ -24,6 +25,7 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init_db()
+    configure_llm()
     worker = asyncio.create_task(orchestrator.worker_loop())
     yield
     worker.cancel()

@@ -40,6 +40,19 @@ pricing:
   # and until then the README must say any rupee cost is an assumption.
   inr_per_credit: 0.0
   inr_per_credit_is_placeholder: true
+  # PLACEHOLDER exchange rate for converting the LLM's USD price to rupees. Replace with a sourced
+  # reference rate (e.g. RBI) and say so in the README.
+  usd_to_inr: 85.0
+  usd_to_inr_is_placeholder: true
+
+# LLM used only to extract facts and write the explanation (never to decide). Prices: Anthropic list
+# price for Claude Haiku 5.5, USD per million tokens (prompts up to 100K tokens).
+llm:
+  provider: anthropic
+  model: claude-haiku-5-5
+  usd_per_mtok_in: 0.10
+  usd_per_mtok_out: 0.50
+  max_output_tokens: 2000
 
 # ---- Kickoff formats: the ONLY place to remap when docs/kickoff/ arrives (all TEMPORARY now) ----
 

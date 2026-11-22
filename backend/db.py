@@ -48,7 +48,9 @@ CREATE TABLE IF NOT EXISTS sources (
     request_json TEXT,
     raw_response TEXT,
     retrieved_at TEXT NOT NULL,
-    record_date  TEXT
+    record_date  TEXT,
+    status       TEXT,             -- ok|empty|timeout|error|rate_limited|no_credits (API sources)
+    http_status  INTEGER
 );
 CREATE TABLE IF NOT EXISTS evidence (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -154,6 +156,11 @@ def init_db():
     with connect() as conn:
         conn.execute("PRAGMA journal_mode=WAL")   # readers never block the writer
         conn.executescript(SCHEMA)
+        # Databases created before these columns existed get them added (CREATE IF NOT EXISTS won't).
+        existing = {r["name"] for r in conn.execute("PRAGMA table_info(sources)")}
+        for column, kind in (("status", "TEXT"), ("http_status", "INTEGER")):
+            if column not in existing:
+                conn.execute(f"ALTER TABLE sources ADD COLUMN {column} {kind}")
 
 
 def now() -> str:
@@ -409,17 +416,30 @@ def get_personal_data(run_id: int) -> list[dict]:
 
 # ---------- sources / ledger (B writes these via their client; helpers for everyone) ----------
 
-def add_source(run_id, kind, endpoint=None, url=None, request=None, raw_response=None, record_date=None) -> int:
+def add_source(run_id, kind, endpoint=None, url=None, request=None, raw_response=None, record_date=None,
+               status=None, http_status=None) -> int:
     with connect() as conn:
         cur = conn.execute(
-            """INSERT INTO sources (run_id, kind, endpoint, url, request_json, raw_response, retrieved_at, record_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (run_id, kind, endpoint, url, json.dumps(request, default=str),
+            """INSERT INTO sources (run_id, kind, endpoint, url, request_json, raw_response, retrieved_at,
+                                    record_date, status, http_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (run_id, kind, endpoint, url, json.dumps(request, sort_keys=True, default=str),
              raw_response if isinstance(raw_response, str) or raw_response is None
              else json.dumps(raw_response, default=str),
-             now(), record_date),
+             now(), record_date, status, http_status),
         )
         return cur.lastrowid
+
+
+def find_cached_source(run_id, endpoint, request_json) -> dict | None:
+    """Crustdata per-run cache: this run already got an answer (ok or empty) for this exact request."""
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT id FROM sources WHERE run_id = ? AND endpoint = ? AND request_json = ?
+               AND status IN ('ok', 'empty') ORDER BY id DESC LIMIT 1""",
+            (run_id, endpoint, request_json),
+        ).fetchone()
+    return get_source(row["id"]) if row else None
 
 
 def find_or_add_source(run_id, kind, url, raw_response, record_date=None) -> int:
