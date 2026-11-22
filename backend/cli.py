@@ -44,9 +44,9 @@ def load_cases(path: str, cfg: dict) -> list[tuple[str, dict]]:
     return result
 
 
-def case_hash(case_id: str, our_input: dict) -> str:
+def case_hash(case_id: str, our_input: dict, client_id: str = "default") -> str:
     """Same case id + same input -> same hash -> same run on a re-run."""
-    canonical = json.dumps({"case_id": case_id, "input": our_input}, sort_keys=True)
+    canonical = json.dumps({"client": client_id, "case_id": case_id, "input": our_input}, sort_keys=True)
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
@@ -54,9 +54,9 @@ def ensure_runs(cases: list[tuple[str, dict]], cfg: dict) -> list[tuple[str, int
     """Find each case's existing run, or create it. Returns [(case_id, run_id)]."""
     pairs = []
     for case_id, our_input in cases:
-        h = case_hash(case_id, our_input)
+        h = case_hash(case_id, our_input, cfg["client"]["id"])
         existing = db.find_run_by_hash(h)
-        run_id = existing["id"] if existing else db.create_run(our_input, cfg["limits"], input_hash=h)
+        run_id = existing["id"] if existing else db.create_run(our_input, cfg["limits"], client_id=cfg["client"]["id"], input_hash=h)
         pairs.append((case_id, run_id))
     return pairs
 
@@ -114,11 +114,11 @@ def write_json_atomic(path: str, data: dict):
 
 # ---------- entry point ----------
 
-def run_cli(input_path: str, output_path: str, parallel: int = 1) -> dict:
+def run_cli(input_path: str, output_path: str, parallel: int = 1, client_id: str = "default") -> dict:
     load_dotenv()
     db.init_db()
     configure_llm()
-    cfg = load_config()
+    cfg = load_config(client_id)                 # this client's formats, limits and rules
     resumed = db.requeue_interrupted_runs()      # runs killed mid-way last time -> queued again
     if resumed:
         print(f"resuming interrupted runs: {resumed}")
@@ -144,8 +144,9 @@ def main(argv=None):
     parser.add_argument("--input", required=True, help="cases file (kickoff input format)")
     parser.add_argument("--output", required=True, help="results file to write")
     parser.add_argument("--parallel", type=int, default=1, help="runs at the same time (default 1)")
+    parser.add_argument("--client", default="default", help="client_id from config.yaml clients (default: default)")
     args = parser.parse_args(argv)
-    run_cli(args.input, args.output, args.parallel)
+    run_cli(args.input, args.output, args.parallel, args.client)
 
 
 if __name__ == "__main__":

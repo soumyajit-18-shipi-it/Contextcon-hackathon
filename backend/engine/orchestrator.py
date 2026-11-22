@@ -119,7 +119,8 @@ def failed_output(step_name: str, error: str) -> dict:
 
 async def process_run(run_id: int):
     """Run (or resume) one vendor check until it finishes or has to stop."""
-    cfg = load_config()                           # fresh every run: config edits apply immediately
+    run = db.get_run(run_id)
+    cfg = load_config(run["client_id"])           # fresh every run + this client's overrides
     db.set_run_limits(run_id, cfg["limits"])
     run = db.get_run(run_id)
     outputs = db.get_step_outputs(run_id)         # steps already checkpointed before a crash
