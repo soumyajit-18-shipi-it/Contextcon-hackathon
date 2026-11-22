@@ -77,8 +77,9 @@ async def step_report(ctx):
 
     answers = build_answers(evidence)
     report_md = build_report_md(run, verdict, answers, explanation, stub_steps)
+    run_after = {**run, "status": "awaiting_approval"}   # the report is the last step; this is the next state
     output = _load_build_output()(
-        {"input": run["input"], "verdict": verdict, "answers": answers, "run": run},
+        {"input": run["input"], "verdict": verdict, "answers": answers, "run": run_after},
         ctx["config"]["output_fields"],
     )
     db.save_verdict(run_id, verdict["verdict"], verdict, answers, explanation, report_md, output)
