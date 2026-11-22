@@ -103,3 +103,25 @@ def test_many_current_roles_is_nominee_pattern(monkeypatch):
     fake_api(monkeypatch, {("/person/enrich", "https://www.linkedin.com/in/ravi"): person(roles)})
     out = asyncio.run(steps.step_director(ctx({"name": "Acme Freight"}, {"company": COMPANY_OUT})))
     assert next(e for e in out["evidence"] if e["check"] == "nominee_pattern")["flag"] == "hard"
+
+
+def test_only_fuzzy_name_hits_is_not_found(monkeypatch):
+    """A made-up name gets fuzzy hits (0.6). They are kept as weak_matches, but nothing is offered as the company."""
+    fake_api(monkeypatch, {("/company/identify", "Blue Banyan Haulage"): [{"matches": [
+        company(1, "Blue Banyan Yoga", "bluebanyanyoga.com", 0.6), company(2, "Blue Banyan Books", "bluebanyanbooks.com", 0.6)]}]})
+    out = asyncio.run(steps.step_resolve(ctx({"name": "Blue Banyan Haulage"})))
+    assert out["chosen"] is None and out["candidates"] == [] and len(out["weak_matches"]) == 2
+
+
+def test_advisor_and_member_roles_are_not_directorships(monkeypatch):
+    roles = [{"name": f"Co {i}", "title": t, "crustdata_company_id": 100 + i}
+             for i, t in enumerate(["Advisor", "Investor", "Association Member", "Content Creator", "Mentor"])]
+    roles.append({"name": "Acme Freight", "title": "Founder & CEO", "start_date": "2016-01-01", "crustdata_company_id": 1})
+    fake_api(monkeypatch, {("/person/enrich", "https://www.linkedin.com/in/ravi"): person(roles)})
+    out = asyncio.run(steps.step_director(ctx({"name": "Acme Freight"}, {"company": COMPANY_OUT})))
+    assert next(e for e in out["evidence"] if e["check"] == "nominee_pattern")["flag"] == "none"
+
+
+def test_founders_office_is_not_a_leader():
+    assert not steps.is_leader_title("Founder's Office") and not steps.is_leader_title("Assistant to the Director")
+    assert steps.is_leader_title("Co-Founder & CEO") and steps.is_leader_title("Managing Director")

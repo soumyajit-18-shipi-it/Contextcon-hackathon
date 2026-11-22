@@ -1,0 +1,7 @@
+{
+  "_note": "DEMO stand-in for the client's existing vendor list until the kickoff kit's records arrive. Not real client data.",
+  "vendors": [
+    {"name": "TCI Express Limited", "website": "tciexpress.in", "director": "Chander Agarwal", "gstin": null},
+    {"name": "Gati Limited", "website": "gati.com", "director": null, "gstin": null}
+  ]
+}

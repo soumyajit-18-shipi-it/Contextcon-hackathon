@@ -36,9 +36,11 @@ class LedgerWebBudget:
         self.limit = limit
 
     def used(self, run_id: int) -> int:
+        """Web calls that got an answer. Timed-out attempts (no answer, 0 credits) don't use up the budget."""
         with db.connect() as conn:
             return conn.execute(
-                f"SELECT COUNT(*) FROM ledger WHERE run_id = ? AND endpoint_or_model IN ({','.join('?' * len(WEB_ENDPOINTS))})",
+                f"SELECT COUNT(*) FROM ledger WHERE run_id = ? AND http_status = 200 "
+                f"AND endpoint_or_model IN ({','.join('?' * len(WEB_ENDPOINTS))})",
                 (run_id, *WEB_ENDPOINTS)).fetchone()[0]
 
     async def reserve(self, run_id: int) -> bool:

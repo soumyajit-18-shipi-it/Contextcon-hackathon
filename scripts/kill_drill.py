@@ -81,7 +81,10 @@ def report(run_id, killed_after_id):
 def wait_until(predicate, timeout_s, what):
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        result = predicate()
+        try:
+            result = predicate()
+        except Exception:      # e.g. the fresh database has no tables yet: not ready
+            result = None
         if result:
             return result
         time.sleep(0.25)

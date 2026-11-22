@@ -28,6 +28,8 @@ BASE_URL = "https://api.crustdata.com"
 API_VERSION = "2025-11-01"
 TIMEOUT_S = 20
 RETRIES = 2
+# Live web search/fetch is slower than the data endpoints (observed 7-25 s on 2026-11-22), so it gets longer.
+ENDPOINT_TIMEOUT_S = {"/web/search/live": 40, "/web/enrich/live": 40}
 
 RATE_LIMITS = {  # requests per minute, per endpoint (Crustdata defaults)
     "/company/identify": 30, "/company/search": 30, "/person/search": 30, "/job/search": 30,
@@ -127,11 +129,11 @@ async def call(run_id, endpoint: str, payload: dict | None, method: str = "POST"
         await _wait_for_rate_limit(endpoint)
         attempt_started = time.monotonic()
         try:
-            async with httpx.AsyncClient(timeout=TIMEOUT_S) as client:
+            async with httpx.AsyncClient(timeout=ENDPOINT_TIMEOUT_S.get(endpoint, TIMEOUT_S)) as client:
                 response = await client.request(method, BASE_URL + endpoint, headers=_headers(),
                                                 content=request_json if payload is not None else None)
         except httpx.TimeoutException:
-            status, data, http_status = "timeout", {"reason": f"no answer within {TIMEOUT_S}s"}, None
+            status, data, http_status = "timeout", {"reason": f"no answer within {ENDPOINT_TIMEOUT_S.get(endpoint, TIMEOUT_S)}s"}, None
             ledger.record(run_id, "crustdata", endpoint, latency_ms=_ms(attempt_started))
             await asyncio.sleep(attempt + 1)
             continue

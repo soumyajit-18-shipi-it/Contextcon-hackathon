@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {"id": "T1-honest", "vendor_name": "Delhivery", "website": "https://www.delhivery.com", "request": "New carrier for the Pune-Delhi lane"},
+    {"id": "T2-common-name-director", "vendor_name": "Shadowfax", "website": "https://www.shadowfax.in", "director": "Abhishek Bansal", "request": "Last-mile partner onboarding"},
+    {"id": "T3-lookalike", "vendor_name": "Blue Dart Express", "website": "https://www.bluedart-express-india.com", "request": "Express carrier onboarding"},
+    {"id": "T4-made-up", "vendor_name": "Blue Banyan Haulage Pvt Ltd", "website": "https://www.bluebanyanhaulage-carriers.in", "request": "Proposed regional carrier"},
+    {"id": "T5-name-only", "vendor_name": "Shree Logistics", "request": "Please onboard Shree Logistics as a transporter"},
+    {"id": "T6-duplicate", "vendor_name": "TCI Express", "website": "https://www.tciexpress.in", "request": "Onboard TCI Express"},
+    {"id": "T7-claimed-older", "vendor_name": "Porter", "website": "https://porter.in", "claimed_year": 2001, "request": "Intra-city transport vendor; says it has operated since 2001"}
+  ]
+}

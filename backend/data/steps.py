@@ -5,6 +5,7 @@ that response (field_path) and the record's date. Missing data is cant_verify (w
 a source that timed out or errored makes the step raise, so the engine retries once and then records
 'unknown'. Only contradictions are hard flags. Thresholds come from config.yaml -> rules.
 """
+import re
 from datetime import date, datetime, timedelta
 
 from backend.data import crustdata
@@ -12,8 +13,16 @@ from backend.engine.names import name_score, normalize_domain, same_person
 
 HOLD_STATUSES = {"no_credits"}
 FAILED_STATUSES = {"timeout", "error", "rate_limited"}
-LEADER_WORDS = ("founder", "ceo", "chief executive", "managing director", "director", "md", "proprietor",
-                "owner", "partner", "president")
+# A leader / directorship title (whole words), excluding junior or non-executive roles that contain those words
+# ("Founder's Office", "Assistant to the Director", "Advisor", "Investor").
+LEADER_TITLE = re.compile(r"\b(co-?founder|founder|ceo|chief executive|managing director|director|md|proprietor|owner|"
+                          r"partner|president|chairman|chairperson)\b", re.IGNORECASE)
+NOT_LEADER = re.compile(r"\b(office|intern|assistant|associate|advisor|adviser|investor|mentor|member|player|creator|"
+                        r"volunteer|student)\b", re.IGNORECASE)
+
+
+def is_leader_title(title) -> bool:
+    return bool(title) and bool(LEADER_TITLE.search(title)) and not NOT_LEADER.search(title)
 
 
 # ---------------- helpers ----------------
@@ -103,13 +112,16 @@ async def step_resolve(ctx):
         raise SourceUnavailable("; ".join(failures))   # unknown, not "not found"
 
     plausible = [c for c in name_matches if (c["confidence"] or 0) >= rules["resolve_min_confidence"]]
+    possible = [c for c in name_matches if (c["confidence"] or 0) >= rules["resolve_candidate_min_confidence"]]
+    weak = [c for c in name_matches if c not in possible]   # fuzzy name hits: shown, never offered as "the company"
     if by_domain:
         chosen, candidates = by_domain, []
     elif len(plausible) == 1:
         chosen, candidates = plausible[0], []
-    else:   # several plausible, or only weak matches: a person picks (empty list -> not found)
-        chosen, candidates = None, (plausible or name_matches)[: rules["max_candidates"]]
+    else:   # several plausible, or only possible matches: a person picks. None possible -> not found
+        chosen, candidates = None, (plausible or possible)[: rules["max_candidates"]]
     return {"by_domain": by_domain, "by_name": by_name, "candidates": candidates, "chosen": chosen,
+            "weak_matches": weak[: rules["max_candidates"]],
             "match_confidence": chosen["confidence"] if chosen else None,
             "chosen_by": "domain" if by_domain else ("name" if chosen else None), "lookup_failures": failures}
 
@@ -199,11 +211,10 @@ def _pick_directors(ctx, leaders: list[dict], limit: int) -> tuple[list[dict], b
     if named:
         return [p for p in with_url if same_person(named, p["name"])][:1], True
     def rank(p):
-        title = (p["title"] or "").lower()
-        return (p["group"] != "founders", not any(w in title for w in LEADER_WORDS))
+        return (p["group"] != "founders", not is_leader_title(p["title"]))
     picked, seen = [], set()
     for p in sorted(with_url, key=rank):
-        if p["person_id"] not in seen and any(w in (p["title"] or "").lower() for w in LEADER_WORDS):
+        if p["person_id"] not in seen and is_leader_title(p["title"]):
             picked.append(p)
             seen.add(p["person_id"])
     return picked[:limit], False
@@ -281,10 +292,13 @@ async def step_director(ctx):
             evidence.append(_missing("director_current_role", f"{name} currently runs the company",
                                      "profile shows no current role at this company", sid))
 
-        many = len(current) >= rules["nominee_roles"]
-        evidence.append(_ev("nominee_pattern", f"{name} holds {len(current)} current roles"
+        # Nominee pattern counts DIRECTORSHIP-type roles only (advisor/investor/member roles are normal for founders).
+        directorships = sum(1 for c in current if is_leader_title(c.get("title")))
+        many = directorships >= rules["nominee_roles"]
+        evidence.append(_ev("nominee_pattern", f"{name} holds {directorships} current directorship-type roles "
+                            f"({len(current)} current roles in total)"
                             + (f" (>= {rules['nominee_roles']}: possible nominee)" if many else ""),
-                            len(current), sid, f"{base}.experience.employment_details.current", record_date,
+                            directorships, sid, f"{base}.experience.employment_details.current", record_date,
                             flag="hard" if many else "none"))
 
     return {"profiles": profiles, "evidence": evidence, "personal_data": personal}

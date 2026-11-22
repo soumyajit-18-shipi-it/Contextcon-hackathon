@@ -23,6 +23,7 @@ rules:
   duplicate_name_match: 90     # name score >= this + same director -> likely duplicate (soft)
   lookalike_name_min: 85       # name score >= this, different director/domain -> look-alike name (soft)
   resolve_min_confidence: 0.9  # name-only lookup: matches at/above this are "plausible"; >1 plausible -> a person picks
+  resolve_candidate_min_confidence: 0.7  # below this a name match is a fuzzy hit, not a candidate (none left -> CANNOT VERIFY)
   max_candidates: 5            # candidates shown to the person
   max_directors: 2             # Person Enrich at most this many people per run (credits)
   hiring_window_days: 180      # job postings in this window -> hiring activity
@@ -112,6 +113,10 @@ clients:
     name: TBD
     records_path: data/client_records.json    # .json (list, or {"vendors": [...]}) or .csv; reloaded when it changes
     # Our field -> column/key name in this client's records file. TEMPORARY until the kickoff kit.
+    record_fields: {name: name, domain: website, director: director, gstin: gstin}
+  demo_3pl:                                   # DEMO client used for the live test batch (tests/cases.live.json)
+    name: Demo 3PL (stand-in until the kickoff kit's client records arrive)
+    records_path: tests/client_records.demo.json
     record_fields: {name: name, domain: website, director: director, gstin: gstin}
   # A second client is one more block, for example:
   # example_bank:
