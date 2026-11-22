@@ -6,6 +6,7 @@ Exactly-once guarantees live in the schema:
 """
 import json
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -209,7 +210,7 @@ def list_runs() -> list[dict]:
     with connect() as conn:
         rows = conn.execute(
             """SELECT r.id, r.input_json, r.status, r.status_reason, r.created_at, r.updated_at,
-                      r.credits_used, r.cost_inr, v.verdict, a.decision
+                      r.credits_used, r.cost_inr, r.duplicate_of, v.verdict, a.decision
                FROM runs r
                LEFT JOIN verdicts v ON v.run_id = r.id
                LEFT JOIN approvals a ON a.run_id = r.id
@@ -219,6 +220,8 @@ def list_runs() -> list[dict]:
     for row in rows:
         run = dict(row)
         run["input"] = _loads(run.pop("input_json"))
+        match = re.match(r"run #(\d+)", run["duplicate_of"] or "")   # repeat submission -> link to the earlier run
+        run["duplicate_run_id"] = int(match.group(1)) if match else None
         runs.append(run)
     return runs
 

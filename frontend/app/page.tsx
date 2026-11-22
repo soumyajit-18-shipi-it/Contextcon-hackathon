@@ -11,7 +11,7 @@ export default function Home() {
   async function submit(e: FormEvent) {
     e.preventDefault(); setError('');
     const name = form.name.trim();
-    if (!name) { setError('Vendor name is required.'); return; }
+    if (!name && !form.website.trim() && !form.request_text.trim()) { setError('Give a vendor name, a website, or the request in your own words.'); return; }
     if (form.website.trim()) {
       try { const u = new URL(form.website.trim()); if (!['http:', 'https:'].includes(u.protocol)) throw new Error(); }
       catch { setError('Enter a valid website URL beginning with http:// or https://.'); return; }
@@ -20,7 +20,7 @@ export default function Home() {
     if (year && (!Number.isInteger(year) || year < 1800 || year > new Date().getFullYear())) { setError('Enter a valid founding year.'); return; }
     setBusy(true);
     try {
-      const input: RunInput = { name, website: form.website.trim() || null, director: form.director.trim() || null, claimed_year: year, request_text: form.request_text.trim() || null };
+      const input: RunInput = { name: name || null, website: form.website.trim() || null, director: form.director.trim() || null, claimed_year: year, request_text: form.request_text.trim() || null };
       const created = await api<{ id: number | string }>('/runs', { method: 'POST', body: JSON.stringify(input) });
       if (created.id === undefined || created.id === null) throw new Error('The backend response did not include a run ID.');
       window.location.assign(`/runs/${created.id}`);
@@ -42,13 +42,13 @@ export default function Home() {
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">New check</span>
         </div>
         <form onSubmit={submit} className="space-y-5" aria-busy={busy}>
-          <label className="form-label">Vendor name <span className="text-red-700">*</span><input required autoComplete="organization" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="form-control" placeholder="Registered or trading name" /></label>
+          <label className="form-label">Vendor name <span className="font-normal text-slate-500">· or give a website / free-text request</span><input autoComplete="organization" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="form-control" placeholder="Registered or trading name" /></label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="form-label">Website<input type="url" autoComplete="url" value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} className="form-control" placeholder="https://vendor.in" /></label>
             <label className="form-label">Director<input value={form.director} onChange={e => setForm({ ...form, director: e.target.value })} className="form-control" placeholder="If known" /></label>
           </div>
           <label className="form-label">Claimed founding year<input inputMode="numeric" type="number" min="1800" max={new Date().getFullYear()} value={form.claimed_year} onChange={e => setForm({ ...form, claimed_year: e.target.value })} className="form-control max-w-xs" placeholder="Optional" /></label>
-          <label className="form-label">Request context <span className="font-normal text-slate-500">· optional</span><textarea value={form.request_text} onChange={e => setForm({ ...form, request_text: e.target.value })} rows={3} className="form-control resize-y" placeholder="Why is this vendor being onboarded?" /></label>
+          <label className="form-label">Request context <span className="font-normal text-slate-500">· optional</span><textarea value={form.request_text} onChange={e => setForm({ ...form, request_text: e.target.value })} rows={3} className="form-control resize-y" placeholder="Or just paste the request, e.g. Please onboard Delhivery (www.delhivery.com) for the Pune-Delhi lane" /></label>
           {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">{error}</p>}
           <div className="flex flex-wrap items-center gap-4 border-t border-slate-100 pt-5">
             <button type="submit" disabled={busy} className="primary-action px-5 py-3 text-sm disabled:opacity-60">{busy ? 'Starting check…' : 'Start vendor check'} <span aria-hidden="true">→</span></button>

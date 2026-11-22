@@ -1,5 +1,5 @@
 const API_URL=(process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000').replace(/\/$/,'');
-export interface RunInput {name:string;website?:string|null;director?:string|null;claimed_year?:number|null;request_text?:string|null}
+export interface RunInput {name?:string|null;website?:string|null;director?:string|null;claimed_year?:number|null;request_text?:string|null}
 export interface Run {id:number;input:RunInput;status:string;status_reason?:string|null;current_step?:string|null;time_limit_s:number;credit_limit:number;cost_limit_inr:number;credits_used:number;cost_inr:number;elapsed_s:number;created_at:string;duplicate_of?:string|null}
 export interface Evidence {id:number;check:string;claim:string;value:unknown;source_id:number|null;field_path:string|null;passage:string|null;record_date:string|null;flag:'hard'|'soft'|'none';status:'verified'|'cant_verify'|'unknown';missing:string|null}
 export interface RunDetail {run:Run;steps:any[];evidence:Evidence[];media_hits:any[];timeline:any[];candidates:any[]|null;duplicate_of:string|null;duplicate_matches:any[];lookalike:any;verdict:any;answers:any;explanation:any;report_md:string|null;approval:any;personal_data:any[];ledger_summary:any}
