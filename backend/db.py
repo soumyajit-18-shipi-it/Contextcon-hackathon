@@ -226,6 +226,15 @@ def mark_run_started(run_id: int, step_name: str):
         )
 
 
+def set_run_limits(run_id: int, limits: dict):
+    """Apply the current config's ceilings to this run (config is re-read every run)."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE runs SET time_limit_s = ?, credit_limit = ?, cost_limit_inr = ? WHERE id = ?",
+            (limits["time_limit_s"], limits["credit_limit"], limits["cost_limit_inr"], run_id),
+        )
+
+
 def add_elapsed(run_id: int, seconds: float):
     with connect() as conn:
         conn.execute("UPDATE runs SET elapsed_s = elapsed_s + ? WHERE id = ?", (seconds, run_id))
