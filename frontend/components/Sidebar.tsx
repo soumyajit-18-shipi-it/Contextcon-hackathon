@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export default function Sidebar() {
-  const pathname = usePathname();
-  const isNew = pathname === '/';
+  const pathname = usePathname() || '';
+  const isNew = pathname === '/' || pathname === '';
   const isHistory = pathname.startsWith('/history');
 
   return (
