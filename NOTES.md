@@ -121,3 +121,4 @@ All calls: headers `authorization: Bearer`, `x-api-version: 2025-11-01`. Cost pe
 - Bug of the day: a patch script turned regex "\b" into literal backspace bytes (0x08) in steps.py, so no title matched; caught by tests, fixed with chr(92)+"b".
 - demo_3pl client + tests/client_records.demo.json = labelled DEMO stand-in for the client's vendor list (kickoff records still missing).
 - Server kill drill (--kill-at media): PASS, no repeated call, approve-twice 200/409. Details in docs/kill_drill_results.md.
+- CLI kill drill (--kill-at director) at 17:09: PASS, resumed only the interrupted run, 2 runs before/after, no repeated call; Delhivery CLEARED in that batch. docs/kill_drill_results.md.

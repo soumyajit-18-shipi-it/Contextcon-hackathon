@@ -49,10 +49,65 @@ What this shows:
 - **Rate limiting:** a 429 on identify (#2) was handled by waiting for `x-ratelimit-reset` and retrying.
 - **Approval exactly once:** the first approval got HTTP 200, the second got HTTP 409.
 
-## 2. Batch CLI, killed mid-batch: automated test PASS; live attempt blocked by API latency
+## 2. Batch CLI, killed mid-batch (`cli --kill-at director`): **PASS**
 
-- **Automated (offline):** `backend/engine/tests/test_cli.py::test_kill_mid_batch_then_rerun_resumes` kills the CLI process with an uncatchable exception in the middle of run 2's `media` step, then re-runs the same command. It checks four things: still 2 runs (nothing duplicated), run 1's finished steps are not re-run, run 2's interrupted step runs again, and both runs finish. **PASS** (part of the 248-test suite).
-- **Live attempt (16:39 IST):** Crustdata calls were timing out repeatedly at that moment, so both runs used up their 300 s time ceiling and were held before run 2 reached the kill point. The drill reported "timed out waiting for: mid-batch point" instead of killing. That's an honest non-result, not a resume failure: the held runs were stopped by the time ceiling, as designed. Re-run with `.venv/Scripts/python scripts/kill_drill.py cli --kill-at company` when the API is responsive.
+```
+[17:07:04] starting CLI batch: drill_cases.json
+[17:08:48] KILLED the CLI mid-batch (run 2 in 'director', last recorded call: ledger #18)
+[17:08:48] runs in the database after the kill: 2. Re-running the SAME command.
+resuming interrupted runs: [2]
+2 cases -> runs [1, 2]
+[drill-1] run #1: CLEARED (awaiting_approval)
+[drill-2] run #2: HOLD FOR REVIEW (awaiting_approval)
+wrote C:\Users\soumy\OneDrive - BIRLA INSTITUTE OF TECHNOLOGY and SCIENCE\Desktop\Contextcon-hackathon\logs\drill_results.json
+  runs before re-run: 2, after: 2 (must be equal: nothing duplicated)
+================ LEDGER for run 1 ================
+  #1   BEFORE kill   crustdata /company/identify    credits=0.2   http=200
+  #2   BEFORE kill   crustdata /company/identify    credits=0.2   http=200
+  #3   BEFORE kill   crustdata /company/enrich      credits=2.0   http=200
+  #4   BEFORE kill   crustdata /person/enrich       credits=1.0   http=200
+  #5   BEFORE kill   crustdata /person/enrich       credits=1.0   http=200
+  #6   BEFORE kill   crustdata /web/enrich/live     credits=1.0   http=200
+  #7   BEFORE kill   crustdata /web/enrich/live     credits=1.0   http=200
+  #8   BEFORE kill   crustdata /job/search          credits=0.03  http=200
+  #9   BEFORE kill   crustdata /web/search/live     credits=1.0   http=200
+  #10  BEFORE kill   crustdata /web/search/live     credits=1.0   http=200
+  #11  BEFORE kill   llm       claude-haiku-5-5     credits=0.0   http=200
+  #12  BEFORE kill   llm       claude-haiku-5-5     credits=0.0   http=200
+  #13  BEFORE kill   llm       claude-haiku-5-5     credits=0.0   http=200
+  #14  BEFORE kill   llm       claude-haiku-5-5     credits=0.0   http=200
+  total: 14 calls, 8.43 credits
+================ REPEAT CHECK ================
+  repeated calls: NONE
+  resume events: []
+  final status: awaiting_approval (report ready, waiting for a person to clear or reject)
+================ LEDGER for run 2 ================
+  #15  BEFORE kill   crustdata /company/identify    credits=0.2   http=200
+  #16  BEFORE kill   crustdata /company/identify    credits=0.2   http=200
+  #17  BEFORE kill   crustdata /company/enrich      credits=2.0   http=200
+  #18  BEFORE kill   crustdata /person/enrich       credits=1.0   http=200
+  #19  AFTER restart crustdata /person/enrich       credits=1.0   http=200
+  #20  AFTER restart crustdata /web/enrich/live     credits=1.0   http=200
+  #21  AFTER restart crustdata /web/enrich/live     credits=1.0   http=200
+  #22  AFTER restart crustdata /job/search          credits=0.03  http=200
+  #23  AFTER restart crustdata /web/search/live     credits=0.0   http=200
+  #24  AFTER restart crustdata /web/search/live     credits=1.0   http=200
+  #25  AFTER restart llm       claude-haiku-5-5     credits=0.0   http=200
+  total: 11 calls, 7.43 credits
+================ REPEAT CHECK ================
+  repeated calls: NONE
+  resume events: ['resumed_after_restart', 'run_resumed']
+  final status: awaiting_approval (report ready, waiting for a person to clear or reject)
+  results file: C:\Users\soumy\OneDrive - BIRLA INSTITUTE OF TECHNOLOGY and SCIENCE\Desktop\Contextcon-hackathon\logs\drill_results.json
+[17:09:59] PASS
+```
+
+What this shows:
+- **The kill:** the CLI process was hard-killed while run 2 was in the `director` step, right after its first Person Enrich call (#18). Run 1 had already finished.
+- **The re-run:** re-running the **same command** resumed only run 2 (`resuming interrupted runs: [2]`), and the run count stayed at 2, so nothing was duplicated.
+- **No repeated calls:** the repeat check is NONE for both runs. The first director lookup came from the per-run cache. The Person Enrich after the restart (#19) is the *second* director, a different request.
+- **Results:** Delhivery CLEARED and Blue Dart held for review (`logs/drill_results.json`).
+- **Earlier attempts:** two earlier live attempts didn't reach a kill point. In the first, Crustdata timeouts held both runs at 16:39. In the second, the single-call `company` step finished between polls. The automated test `backend/engine/tests/test_cli.py::test_kill_mid_batch_then_rerun_resumes` covers the same path offline.
 
 ## How to repeat on stage
 1. `.venv/Scripts/python -m uvicorn backend.main:app --port 8000` and submit a vendor in the UI.
