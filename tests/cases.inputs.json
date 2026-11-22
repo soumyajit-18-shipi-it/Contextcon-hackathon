@@ -1,0 +1,10 @@
+[
+  {"name":"Northstar Freight Services","website":"https://northstarfreight.example","director":"Kavita Rao","claimed_year":2008,"request_text":"Onboard as a regional carrier"},
+  {"name":"Deccan Components","website":"https://deccancomponents.in","director":"Meera Shah","claimed_year":2012,"request_text":"Supplier onboarding; verify the relationship between .in and .com properties"},
+  {"name":"Meridian Transport","website":"https://meridian-transport.example","director":"Rajesh Kumar","claimed_year":2014,"request_text":"Verify director; distinguish common-name media matches"},
+  {"name":"Apex Logistics","website":null,"director":null,"claimed_year":null,"request_text":"Name-only onboarding request; several possible companies may match"},
+  {"name":"Blue Banyan Haulage","website":"https://no-such-domain.invalid","director":null,"claimed_year":null,"request_text":"Verify proposed carrier"},
+  {"name":"DHL Logistics India","website":"https://dhl-logistics-india.example","director":null,"claimed_year":null,"request_text":"Verify whether this vendor is related to the established logistics brand"},
+  {"name":"FutureRoute Carriers","website":"https://futureroute.example","director":null,"claimed_year":2014,"request_text":"Check claimed founding year against dated records"},
+  {"name":"Existing Vendor Transport","website":"https://existing-vendor.example","director":null,"claimed_year":null,"request_text":"Duplicate onboarding fixture"}
+]

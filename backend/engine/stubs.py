@@ -94,4 +94,3 @@ async def step_timeline(ctx):
 async def step_explain(ctx):
     """STUB – owned by C. Real version: llm_json plain-language explanation citing evidence ids."""
     return {"stub": True, "explanation": None}
-

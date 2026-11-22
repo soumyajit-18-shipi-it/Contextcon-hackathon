@@ -1,0 +1,68 @@
+{
+  "cases": [
+    {
+      "id": "T1",
+      "vendor_name": "Northstar Freight Services",
+      "website": "https://northstarfreight.example",
+      "director": "Kavita Rao",
+      "claimed_year": 2008,
+      "request": "Onboard as a regional carrier"
+    },
+    {
+      "id": "T2",
+      "vendor_name": "Deccan Components",
+      "website": "https://deccancomponents.in",
+      "director": "Meera Shah",
+      "claimed_year": 2012,
+      "request": "Supplier onboarding; verify the relationship between .in and .com properties"
+    },
+    {
+      "id": "T3",
+      "vendor_name": "Meridian Transport",
+      "website": "https://meridian-transport.example",
+      "director": "Rajesh Kumar",
+      "claimed_year": 2014,
+      "request": "Verify director; distinguish common-name media matches"
+    },
+    {
+      "id": "T4",
+      "vendor_name": "Apex Logistics",
+      "website": null,
+      "director": null,
+      "claimed_year": null,
+      "request": "Name-only onboarding request; several possible companies may match"
+    },
+    {
+      "id": "T5",
+      "vendor_name": "Blue Banyan Haulage",
+      "website": "https://no-such-domain.invalid",
+      "director": null,
+      "claimed_year": null,
+      "request": "Verify proposed carrier"
+    },
+    {
+      "id": "T6",
+      "vendor_name": "DHL Logistics India",
+      "website": "https://dhl-logistics-india.example",
+      "director": null,
+      "claimed_year": null,
+      "request": "Verify whether this vendor is related to the established logistics brand"
+    },
+    {
+      "id": "T7",
+      "vendor_name": "FutureRoute Carriers",
+      "website": "https://futureroute.example",
+      "director": null,
+      "claimed_year": 2014,
+      "request": "Check claimed founding year against dated records"
+    },
+    {
+      "id": "T8",
+      "vendor_name": "Existing Vendor Transport",
+      "website": "https://existing-vendor.example",
+      "director": null,
+      "claimed_year": null,
+      "request": "Duplicate onboarding fixture"
+    }
+  ]
+}
