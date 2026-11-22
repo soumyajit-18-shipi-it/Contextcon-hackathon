@@ -72,7 +72,14 @@ def fragment_link(url: str, passage: str) -> str:
 
 
 def distinctive_sentences(text: str) -> list[str]:
-    boilerplate = re.compile(r"cookies?|copyright|customer satisfaction|committed to quality|privacy policy|all rights reserved", re.I)
+    boilerplate = re.compile(
+        r"cookies?|copyright|©|customer satisfaction|committed to quality|privacy policy|"
+        r"all rights reserved|terms (?:and conditions|of (?:use|service))|"
+        r"world.class|best.in.class|one.stop (?:shop|solution)|customer.centric|"
+        r"exceed(?:ing)? (?:your |customer )?expectations|trusted partner|"
+        r"highest (?:standards|quality)|commitment to excellence|tailored solutions|"
+        r"innovative solutions|contact us|subscribe to|follow us", re.I)
     sentences = re.split(r"(?<=[.!?])\s+|\n+", text)
     return list(dict.fromkeys(s.strip() for s in sentences
-                             if 12 <= len(s.split()) <= 30 and not boilerplate.search(s)))[:3]
+                             if 12 <= len(s.split()) <= 30 and not boilerplate.search(s)
+                             and '"' not in s))[:3]

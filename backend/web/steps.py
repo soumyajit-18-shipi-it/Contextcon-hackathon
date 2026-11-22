@@ -6,6 +6,21 @@ from backend.web import websearch
 from backend.web.textutil import about_url, fragment_link, page_text, public_url
 
 
+async def step_media(ctx):
+    from backend.web.media import screen_media
+    return await screen_media(ctx)
+
+
+async def step_copied_site(ctx):
+    from backend.web.copied_site import screen_copied_site
+    return await screen_copied_site(ctx)
+
+
+async def step_timeline(ctx):
+    from backend.web.timeline import build_timeline
+    return build_timeline(ctx)
+
+
 def _content(data):
     """Accept only explicit full-page fields; snippets are not page content."""
     if isinstance(data, str):
