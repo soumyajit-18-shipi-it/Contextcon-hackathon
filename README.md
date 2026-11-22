@@ -53,6 +53,45 @@ Editable source: [docs/architecture.svg](docs/architecture.svg).
 
 **Steps.** Each vendor check runs 14 fixed steps, and each one is checkpointed in SQLite before the next starts: intake → resolve → duplicate → company → director → site → core_checks → lookalike → copied_site → media → timeline → verdict → explain → report → (person approves).
 
+## Technical architecture
+
+```mermaid
+flowchart LR
+  UI[Next.js web app] --> API[FastAPI]
+  CLI[Batch CLI] --> ENG
+  API --> ENG[Run engine<br/>14 checkpointed steps]
+  ENG --> CD[Crustdata client<br/>rate limits · retries · cache]
+  CD --> CR[(Crustdata APIs<br/>Identify · Enrich · Person · Jobs · Web)]
+  ENG --> LLM[Claude Haiku<br/>extract + explain only]
+  ENG --> RULES[Verdict rules<br/>config.yaml]
+  ENG --> DB[(SQLite WAL<br/>runs · steps · sources · evidence<br/>ledger · approvals · events)]
+  RULES --> APPROVE[Human approval<br/>exactly once]
+```
+
+- **Interfaces:** a web app for analysts and a batch CLI for bulk onboarding, both on one FastAPI backend.
+- **Run engine:** 14 fixed steps (intake → resolve → duplicate → company → director → site → core checks → look-alike → copied site → news screen → timeline → verdict → explanation → report). Each step's output is checkpointed before the next starts, so a killed run resumes without repeating finished calls.
+- **Data layer:** one Crustdata client for every call: per-endpoint rate limits, 20 s timeout, retries, 429 backoff, 402 hold, and a per-run cache. Every call writes a source row (raw record, retrieval date, record date) and a ledger row (credits, tokens, latency, status).
+- **Decisions:** plain code with thresholds in `config.yaml`. The LLM only extracts facts and writes the explanation, inside untrusted-data delimiters. It never sets a flag or a verdict.
+- **Controls:** time, credit and ₹ ceilings per run; a web-call budget; "unknown" for timeouts (never "not found"); approval enforced once by a database constraint; a structured event log per run.
+- **Configurability:** limits, rules, output fields, input formats and per-client settings are config, so requirement changes and new clients need no code changes.
+
+## Business architecture
+
+| | |
+|---|---|
+| **Customer** | Procurement and compliance teams at mid-size Indian 3PL and logistics companies. Next: banks and payment firms onboarding merchants. |
+| **Job replaced** | Manual vendor due diligence by an analyst or an outside verification firm, paid per vendor checked |
+| **Trigger** | A new carrier or supplier must be onboarded before its first payment |
+| **Output** | A verdict with sourced evidence on file, and a person's clear/reject decision recorded once |
+| **Value** | Minutes instead of hours per vendor; fronts, duplicates and impersonators caught before money moves; innocent namesakes cleared; an audit trail for every decision |
+| **Revenue model** | A per-vendor fee, priced on the measured cost per check |
+| **Cost per check** | Measured from the ledger: about 8–9 Crustdata credits plus LLM tokens per vendor (₹ per credit is an unconfirmed assumption) |
+| **Trust model** | Every claim sourced, "cannot verify" when unsure, minimal personal data, a person makes every final decision |
+
+```
+Request → Verity checks (live data) → Verdict + evidence → Analyst approves → Vendor onboarded / rejected → Audit trail
+```
+
 ## Evidence and verdict rules (plain code, thresholds in `config.yaml`)
 
 | # | Rule | Verdict |
@@ -164,13 +203,32 @@ cd frontend && npm install && NEXT_PUBLIC_API_URL=http://localhost:8000 npm run 
 - **Frontend checks:** `npm run build` (includes type check and lint)
 - **Environment variables:** `CRUSTDATA_API_KEY`, `LLM_API_KEY` or `ANTHROPIC_API_KEY`, `CRUSTDATA_WEB_FETCH_ENDPOINT`, `VERITY_DB_PATH`, `VERITY_LOG_PATH`, `NEXT_PUBLIC_API_URL`. Never commit `.env`.
 
-## ★ Open-source credits and team
+## ★ Open-source credits
 
 - **Backend:** FastAPI, Uvicorn, httpx, RapidFuzz, PyYAML, Pydantic, python-dotenv, jsonschema, Anthropic SDK, pytest.
 - **Frontend:** Next.js, React, TypeScript, Tailwind CSS, PostCSS, Autoprefixer, ESLint.
-- **Team:**
-  - Soumyajit (Lead): engine, API, DB, verdict rules, duplicate/look-alike, CLI, intake, events/stats, kill drill. Also completed Member B's data layer and the live web adapters.
-  - Member C (Abhipsa Parida): web retrieval, LLM helper, media/namesake scoring, copied-site, timeline, explanation.
-  - Member D (Raviuday): frontend, test cases, README and diagram first drafts, demo script.
 
 Repository history starts at the kickoff commit; nothing was written beforehand.
+
+## Team
+
+| Name | ID | Email |
+|---|---|---|
+| Soumyajit Rout | 2024A7PS0002P | f20240002@pilani.bits-pilani.ac.in |
+| Raviuday Singh | 2024A7PS0009P | f20240009@pilani.bits-pilani.ac.in |
+| Siddarth Nahata | 2025H1540813P | h20250813@pilani.bits-pilani.ac.in |
+| Abhipsa Parida | 2025H1540816P | h20250816@pilani.bits-pilani.ac.in |
+
+## Live links
+
+| | Link |
+|---|---|
+| **Web app** (Vercel) | https://verity-app-sepia.vercel.app |
+| **API + interactive docs** (Render) | https://verity-backend-5wgj.onrender.com/docs |
+| **Demo video** | <link> |
+| **Repository** | https://github.com/soumyajit-18-shipi-it/Contextcon-hackathon |
+
+Notes for reviewers:
+- The API runs on Render's free tier, which **sleeps when idle**. The first request can take about 50 seconds to wake it.
+- The hosted database **starts empty and resets on restart**. The recorded test runs are in the demo video and the test results table above.
+- Submitting a new check makes **real, paid** Crustdata calls (about 8–9 credits, 2–5 minutes). Please use real vendor names and websites.
