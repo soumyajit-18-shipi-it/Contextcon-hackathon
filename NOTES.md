@@ -14,6 +14,8 @@
 - Validation: 23 tests passed (tests/test_web.py and tests/test_engine.py) in a
   project-local virtual environment using Python 3.12; git diff --check passed.
   Python 3.11 and live provider compatibility still need validation.
+- Before pushing: merged the latest origin/main without conflicts; all 56 web
+  and engine tests passed. Updated the documented command for the moved engine tests.
 
 Everyone appends here: what we tried, what worked, what broke. Newest at the bottom. Prefix with your name.
 

@@ -45,4 +45,4 @@ URL checks reject literal private addresses and local hostnames. The external
 fetch service must additionally enforce DNS and redirect restrictions.
 
 Dependencies: Python standard library; `jsonschema` for JSON Schema validation.
-Offline tests: `python -m pytest tests/test_web.py tests/test_engine.py -q`.
+Offline tests: `python -m pytest tests/test_web.py backend/engine/tests -q`.
