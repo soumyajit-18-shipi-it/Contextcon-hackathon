@@ -99,7 +99,7 @@ Editable source: [docs/architecture.svg](docs/architecture.svg).
 
 - **Buyer:** procurement and compliance teams at mid-size 3PLs, later banks and payment firms onboarding merchants. They pay per vendor checked.
 - **Measured cost per check** (`GET /stats`, live runs): full checks cost **6.4–9.4 Crustdata credits** and take **250–300 s** at today's API latency (T2 7.43, T6 6.43, T7 9.43, Delhivery 8.43). A name that resolves to nothing stops early at about 0.2 credits. LLM cost is about ₹0.02 per call, 33 calls for ₹0.64 in the batch, at the placeholder exchange rate. Live numbers: `GET /stats`.
-- **₹ is an assumption until confirmed.** Crustdata publishes no public price per credit; `pricing.inr_per_credit` stays marked as a placeholder until the Crustdata team confirms it. LLM cost uses Anthropic's list price ($0.10 / $0.50 per million tokens, [source](https://platform.claude.com/docs/en/about-claude/pricing)) and a placeholder exchange rate.
+- **₹ per credit is an UNCONFIRMED ASSUMPTION.** Crustdata publishes no public price per credit, and the team hasn't received one in writing. `pricing.inr_per_credit` is a placeholder (`inr_per_credit_is_placeholder: true`), so **every rupee figure for Crustdata is unconfirmed**. Only the credit counts are measured. LLM cost uses Anthropic's list price ($0.10 / $0.50 per million tokens, [source](https://platform.claude.com/docs/en/about-claude/pricing)) and a placeholder exchange rate.
 - **Price and manual comparison:** a per-vendor price and the cost of an analyst doing this by hand will be added only with a sourced figure.
 
 ## ★ Test results: expected vs actual (live runs, 2026-11-22)
@@ -108,19 +108,27 @@ Inputs: [tests/cases.live.json](tests/cases.live.json). Run with `--client demo_
 
 | # | Case (live data) | Expected | Actual | |
 |---|---|---|---|---|
-| T1 | Delhivery, delhivery.com | CLEARED | **CLEARED** in a clean run on a fresh database: 8.43 credits, 256 s, "No adverse media about Mohit Tandon or Delhivery in 10 search results". In the batch DB the same run was re-run 3× while rules were fixed and hit the 300 s time ceiling, so it was held (`time ceiling: 302s used of 300s`). | ✅ (clean run) |
+| T1 | Delhivery, delhivery.com | CLEARED | **CLEARED** in three separate live runs: a clean run on a fresh database (8.43 credits, 256 s, "No adverse media about Mohit Tandon or Delhivery in 10 search results") and **both kill-drill batches** ([docs/kill_drill_results.md](docs/kill_drill_results.md)), including the one that was killed and resumed. In `verity_cases.db` (run 1) the same run was re-run 3× while rules were being fixed. Its work time adds up across re-runs, so it hit the 300 s ceiling and shows **held** (`time ceiling: 302s used of 300s`). | ✅ |
 | T2 | Shadowfax, shadowfax.in, director "Abhishek Bansal" | CLEARED, or HOLD if a namesake can't be cleared | **CLEARED**: director confirmed, active, news screen verified | ✅ |
 | T3 | "Blue Dart Express" on a made-up look-alike domain | HOLD FOR REVIEW | **HOLD**: the domain doesn't resolve, the name has 5 possible companies, so a person picks before the look-alike check runs | ✅ |
 | T4 | Made-up "Blue Banyan Haulage" | CANNOT VERIFY | **CANNOT VERIFY**: "company could not be resolved from the name or website given" | ✅ |
 | T5 | "Shree Logistics", name only | A person picks the company | **HOLD** (`awaiting_candidate`): 2 possible companies | ✅ |
-| T6 | TCI Express (in the client records) | HOLD, exact duplicate | **HOLD**, rule `1_exact_duplicate`: "Already a client vendor: TCI Express Limited (tciexpress.in)" | ✅ |
-| T7 | Porter, claims 2001 | HOLD (claimed_age_mismatch) | **HOLD**: "Website history year 2001 compared with verified founding 2014" (hard) | ✅ |
+| T6 | TCI Express (in the client records) | HOLD, exact duplicate | **HOLD**, rule `1_exact_duplicate`: "Already a client vendor: TCI Express Limited (tciexpress.in)". Its news search also timed out (`unknown`); the duplicate rule decides first either way, and the API refuses to clear it. | ✅ |
+| T7 | Porter, claims 2001 | HOLD (claimed_age_mismatch) | **HOLD**, rule `4_needs_review`: "Website history year 2001 compared with verified founding 2014" (hard). The label says "website", but the 2001 claim came from the client's request (`claimed_year`, stored as a client-request source). The news screen was verified: no adverse media in 9 results. | ✅ |
 
 **Wrong answers found on live data, and fixed by making the rules more cautious (no special cases):**
 - **T7 first came out as SUSPECTED FRONT.** The "director" picked had the title *"Founder's Office"*, and their student-society and YouTube roles counted as 5 "current roles", which tripped the nominee pattern. Now leaders are matched on whole-word titles, excluding office, assistant and intern roles, and the nominee pattern counts only directorship-type roles, not advisor, investor or member roles.
 - **T4 first waited for a candidate pick.** The only matches were 0.6-confidence fuzzy hits like "Blue Banyan Yoga". Now matches below `resolve_candidate_min_confidence` (0.7) are shown as weak matches, never offered as the company.
 - **T1 and T2 first held on a news search timeout.** Unknown is never treated as clean, so they had to hold. Web search now has a 40 s timeout, and the per-run web budget counts only answered calls.
 - **News screen:** a customer's forum complaint would HOLD every large carrier, so adverse media now means news sources only (`rules.media_sources`).
+
+## Hour-3 requirement change
+
+Not received in writing by the team at the time of freeze.
+
+## Demo video
+
+Demo video: <link>
 
 ## Approaches considered
 
