@@ -6,4 +6,4 @@ pyyaml
 pydantic
 python-dotenv
 pytest
-# LLM SDK: Member C adds the one we use
+jsonschema

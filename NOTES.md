@@ -1,5 +1,20 @@
 # NOTES
 
+## Member C implementation increment — 2026-11-22
+
+- Added website retrieval adapter, deterministic HTML/text helpers, source-linked
+  year extraction, and an injectable JSON Schema validated LLM helper.
+- Preserved atomic engine checkpointing: steps return evidence instead of writing
+  evidence rows. Timeouts remain unknown and 402 outcomes hold the run.
+- Integration is pending Member B's client, confirmed fetch endpoint/payload, and
+  a configured LLM transport with sourced pricing. No paid/live calls made.
+- Later media, copied-site, timeline, and explanation steps remain explicit stubs.
+- Added offline tests for provenance, timeout/empty separation, credit exhaustion,
+  URL filtering, malformed LLM JSON retries, accounting, and budget prevention.
+- Validation: 23 tests passed (tests/test_web.py and tests/test_engine.py) in a
+  project-local virtual environment using Python 3.12; git diff --check passed.
+  Python 3.11 and live provider compatibility still need validation.
+
 Everyone appends here: what we tried, what worked, what broke. Newest at the bottom. Prefix with your name.
 
 ## Lead (Soumyajit)
