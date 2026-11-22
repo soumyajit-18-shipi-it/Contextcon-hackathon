@@ -188,6 +188,21 @@ def ledger(run_id: int | None = None):
     return {"rows": rows, "summary": db.ledger_summary(run_id) if run_id is not None else None}
 
 
+@app.get("/stats")
+def stats():
+    """Measured cost per check from the ledger/runs (the finance numbers), with placeholder rates marked."""
+    pricing = load_config()["pricing"]
+    placeholders = [name for name in ("inr_per_credit", "usd_to_inr") if pricing.get(f"{name}_is_placeholder")]
+    return {
+        **db.run_stats(),
+        "pricing": {"inr_per_credit": pricing["inr_per_credit"], "usd_to_inr": pricing["usd_to_inr"],
+                    "placeholders": placeholders},
+        "note": ("Rupee figures use placeholder rates (" + ", ".join(placeholders) + "): credits and seconds are "
+                 "measured; rupees are not final until those rates are sourced.") if placeholders
+                else "All rates sourced.",
+    }
+
+
 @app.get("/credits")
 async def credits():
     """Crustdata balance via B's client (GET /account/credits is free)."""

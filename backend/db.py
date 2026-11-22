@@ -544,6 +544,40 @@ def get_verdict(run_id: int) -> dict | None:
     return v
 
 
+# ---------- stats (cost per check, for the finance numbers) ----------
+
+MEASURED_STATUSES = ("awaiting_approval", "done", "held", "awaiting_candidate", "awaiting_input", "failed")
+
+
+def run_stats() -> dict:
+    """Average/max credits, rupees and seconds per check over runs that finished their work, + verdict counts."""
+    marks = ",".join("?" * len(MEASURED_STATUSES))
+    with connect() as conn:
+        agg = conn.execute(
+            f"""SELECT COUNT(*) AS runs,
+                       AVG(credits_used) AS avg_credits, MAX(credits_used) AS max_credits,
+                       AVG(cost_inr) AS avg_inr, MAX(cost_inr) AS max_inr,
+                       AVG(elapsed_s) AS avg_seconds, MAX(elapsed_s) AS max_seconds
+                FROM runs WHERE status IN ({marks})""", MEASURED_STATUSES).fetchone()
+        verdicts = conn.execute("SELECT verdict, COUNT(*) AS n FROM verdicts GROUP BY verdict").fetchall()
+        decisions = conn.execute("SELECT decision, COUNT(*) AS n FROM approvals GROUP BY decision").fetchall()
+        statuses = conn.execute("SELECT status, COUNT(*) AS n FROM runs GROUP BY status").fetchall()
+        llm = conn.execute("SELECT COUNT(*) AS calls, COALESCE(SUM(cost_inr), 0) AS inr FROM ledger "
+                           "WHERE provider = 'llm'").fetchone()
+    a = dict(agg)
+    r = lambda x: round(x, 2) if x is not None else None   # noqa: E731
+    return {
+        "runs_measured": a["runs"],
+        "credits_per_check": {"avg": r(a["avg_credits"]), "max": r(a["max_credits"])},
+        "inr_per_check": {"avg": r(a["avg_inr"]), "max": r(a["max_inr"])},
+        "seconds_per_check": {"avg": r(a["avg_seconds"]), "max": r(a["max_seconds"])},
+        "llm": {"calls": llm["calls"], "inr_total": r(llm["inr"])},
+        "verdicts": {row["verdict"]: row["n"] for row in verdicts},
+        "decisions": {row["decision"]: row["n"] for row in decisions},
+        "runs_by_status": {row["status"]: row["n"] for row in statuses},
+    }
+
+
 # ---------- event log (table + logs/runs.jsonl) ----------
 
 def log_path() -> str:
