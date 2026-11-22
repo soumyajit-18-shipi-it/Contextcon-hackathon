@@ -48,7 +48,9 @@ CREATE TABLE IF NOT EXISTS sources (
     request_json TEXT,
     raw_response TEXT,
     retrieved_at TEXT NOT NULL,
-    record_date  TEXT
+    record_date  TEXT,
+    status       TEXT,             -- ok|empty|timeout|error|rate_limited|no_credits (API sources)
+    http_status  INTEGER
 );
 CREATE TABLE IF NOT EXISTS evidence (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +116,14 @@ CREATE TABLE IF NOT EXISTS approvals (
     user     TEXT NOT NULL,
     ts       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      INTEGER,
+    ts          TEXT NOT NULL,
+    event       TEXT NOT NULL,   -- step_start|step_end|step_error|checkpoint|status|ceiling|approval|run_created|...
+    step        TEXT,
+    detail_json TEXT
+);
 CREATE TABLE IF NOT EXISTS verdicts (
     run_id       INTEGER NOT NULL UNIQUE,
     verdict      TEXT,
@@ -154,6 +164,11 @@ def init_db():
     with connect() as conn:
         conn.execute("PRAGMA journal_mode=WAL")   # readers never block the writer
         conn.executescript(SCHEMA)
+        # Databases created before these columns existed get them added (CREATE IF NOT EXISTS won't).
+        existing = {r["name"] for r in conn.execute("PRAGMA table_info(sources)")}
+        for column, kind in (("status", "TEXT"), ("http_status", "INTEGER")):
+            if column not in existing:
+                conn.execute(f"ALTER TABLE sources ADD COLUMN {column} {kind}")
 
 
 def now() -> str:
@@ -214,6 +229,7 @@ def set_run_status(run_id: int, status: str, reason: str | None = None):
             "UPDATE runs SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?",
             (status, reason, now(), run_id),
         )
+    log_event(run_id, "status", status=status, reason=reason)   # every status change is in the event log
 
 
 def mark_run_started(run_id: int, step_name: str):
@@ -224,6 +240,18 @@ def mark_run_started(run_id: int, step_name: str):
                       started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ?""",
             (step_name, now(), now(), run_id),
         )
+
+
+def update_run_input(run_id: int, input_data: dict):
+    with connect() as conn:
+        conn.execute("UPDATE runs SET input_json = ?, updated_at = ? WHERE id = ?",
+                     (json.dumps(input_data), now(), run_id))
+
+
+def delete_step(run_id: int, step_name: str):
+    """Forget a step's checkpoint so it runs again (used after a person supplies missing input)."""
+    with connect() as conn:
+        conn.execute("DELETE FROM steps WHERE run_id = ? AND step_name = ?", (run_id, step_name))
 
 
 def set_run_limits(run_id: int, limits: dict):
@@ -254,6 +282,8 @@ def requeue_interrupted_runs() -> list[int]:
             "WHERE status = 'running'",
             (now(),),
         )
+    for run_id in ids:
+        log_event(run_id, "resumed_after_restart")
     return ids
 
 
@@ -409,17 +439,41 @@ def get_personal_data(run_id: int) -> list[dict]:
 
 # ---------- sources / ledger (B writes these via their client; helpers for everyone) ----------
 
-def add_source(run_id, kind, endpoint=None, url=None, request=None, raw_response=None, record_date=None) -> int:
+def add_source(run_id, kind, endpoint=None, url=None, request=None, raw_response=None, record_date=None,
+               status=None, http_status=None) -> int:
     with connect() as conn:
         cur = conn.execute(
-            """INSERT INTO sources (run_id, kind, endpoint, url, request_json, raw_response, retrieved_at, record_date)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (run_id, kind, endpoint, url, json.dumps(request, default=str),
+            """INSERT INTO sources (run_id, kind, endpoint, url, request_json, raw_response, retrieved_at,
+                                    record_date, status, http_status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (run_id, kind, endpoint, url, json.dumps(request, sort_keys=True, default=str),
              raw_response if isinstance(raw_response, str) or raw_response is None
              else json.dumps(raw_response, default=str),
-             now(), record_date),
+             now(), record_date, status, http_status),
         )
         return cur.lastrowid
+
+
+def find_cached_source(run_id, endpoint, request_json) -> dict | None:
+    """Crustdata per-run cache: this run already got an answer (ok or empty) for this exact request."""
+    with connect() as conn:
+        row = conn.execute(
+            """SELECT id FROM sources WHERE run_id = ? AND endpoint = ? AND request_json = ?
+               AND status IN ('ok', 'empty') ORDER BY id DESC LIMIT 1""",
+            (run_id, endpoint, request_json),
+        ).fetchone()
+    return get_source(row["id"]) if row else None
+
+
+def find_or_add_source(run_id, kind, url, raw_response, record_date=None) -> int:
+    """For local records (client vendors, past runs): reuse this run's existing source row for the same
+    url, so re-running a step after a crash doesn't pile up identical sources."""
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM sources WHERE run_id = ? AND kind = ? AND url = ?",
+                           (run_id, kind, url)).fetchone()
+    if row:
+        return row["id"]
+    return add_source(run_id, kind, endpoint=kind, url=url, raw_response=raw_response, record_date=record_date)
 
 
 def get_source(source_id: int) -> dict | None:
@@ -490,6 +544,72 @@ def get_verdict(run_id: int) -> dict | None:
     return v
 
 
+# ---------- stats (cost per check, for the finance numbers) ----------
+
+MEASURED_STATUSES = ("awaiting_approval", "done", "held", "awaiting_candidate", "awaiting_input", "failed")
+
+
+def run_stats() -> dict:
+    """Average/max credits, rupees and seconds per check over runs that finished their work, + verdict counts."""
+    marks = ",".join("?" * len(MEASURED_STATUSES))
+    with connect() as conn:
+        agg = conn.execute(
+            f"""SELECT COUNT(*) AS runs,
+                       AVG(credits_used) AS avg_credits, MAX(credits_used) AS max_credits,
+                       AVG(cost_inr) AS avg_inr, MAX(cost_inr) AS max_inr,
+                       AVG(elapsed_s) AS avg_seconds, MAX(elapsed_s) AS max_seconds
+                FROM runs WHERE status IN ({marks})""", MEASURED_STATUSES).fetchone()
+        verdicts = conn.execute("SELECT verdict, COUNT(*) AS n FROM verdicts GROUP BY verdict").fetchall()
+        decisions = conn.execute("SELECT decision, COUNT(*) AS n FROM approvals GROUP BY decision").fetchall()
+        statuses = conn.execute("SELECT status, COUNT(*) AS n FROM runs GROUP BY status").fetchall()
+        llm = conn.execute("SELECT COUNT(*) AS calls, COALESCE(SUM(cost_inr), 0) AS inr FROM ledger "
+                           "WHERE provider = 'llm'").fetchone()
+    a = dict(agg)
+    r = lambda x: round(x, 2) if x is not None else None   # noqa: E731
+    return {
+        "runs_measured": a["runs"],
+        "credits_per_check": {"avg": r(a["avg_credits"]), "max": r(a["max_credits"])},
+        "inr_per_check": {"avg": r(a["avg_inr"]), "max": r(a["max_inr"])},
+        "seconds_per_check": {"avg": r(a["avg_seconds"]), "max": r(a["max_seconds"])},
+        "llm": {"calls": llm["calls"], "inr_total": r(llm["inr"])},
+        "verdicts": {row["verdict"]: row["n"] for row in verdicts},
+        "decisions": {row["decision"]: row["n"] for row in decisions},
+        "runs_by_status": {row["status"]: row["n"] for row in statuses},
+    }
+
+
+# ---------- event log (table + logs/runs.jsonl) ----------
+
+def log_path() -> str:
+    return os.environ.get("VERITY_LOG_PATH", "logs/runs.jsonl")
+
+
+def log_event(run_id, event: str, step: str | None = None, **detail):
+    """One structured event: a row in `events` and one JSON line in logs/runs.jsonl.
+    Writing the log file can never break a run."""
+    row = {"ts": now(), "run_id": run_id, "event": event, "step": step, **detail}
+    with connect() as conn:
+        conn.execute("INSERT INTO events (run_id, ts, event, step, detail_json) VALUES (?, ?, ?, ?, ?)",
+                     (run_id, row["ts"], event, step, json.dumps(detail, default=str)))
+    try:
+        os.makedirs(os.path.dirname(log_path()) or ".", exist_ok=True)
+        with open(log_path(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, default=str) + "\n")
+    except OSError:
+        pass
+
+
+def get_events(run_id: int) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM events WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
+    events = []
+    for r in rows:
+        e = dict(r)
+        e["detail"] = _loads(e.pop("detail_json"))
+        events.append(e)
+    return events
+
+
 # ---------- approvals (exactly once) ----------
 
 def add_approval(run_id: int, decision: str, reason: str, user: str):
@@ -501,6 +621,7 @@ def add_approval(run_id: int, decision: str, reason: str, user: str):
         )
         conn.execute("UPDATE runs SET status = 'done', status_reason = ?, updated_at = ? WHERE id = ?",
                      (f"{decision} by {user}", now(), run_id))
+    log_event(run_id, "approval", decision=decision, reason=reason, user=user)
 
 
 def get_approval(run_id: int) -> dict | None:

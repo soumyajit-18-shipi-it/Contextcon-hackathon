@@ -7,7 +7,6 @@ Resume logic (what the judges test by killing the server):
      B's Crustdata client caches per run, so that re-run makes zero new API calls.
 """
 import asyncio
-import importlib
 import inspect
 import time
 import traceback
@@ -18,6 +17,7 @@ from backend.engine import stubs
 
 # (step name, module that owns it). The function is always called step_<name>.
 STEPS = [
+    ("intake", "backend.engine.intake"),      # Lead: client's words -> our input fields
     ("resolve", "backend.data.steps"),        # B
     ("duplicate", "backend.engine.duplicate"),  # Lead
     ("company", "backend.data.steps"),        # B
@@ -34,27 +34,17 @@ STEPS = [
 ]
 
 # If the company can't be found at all, these are skipped and we go straight to the verdict.
-SKIP_WHEN_NOT_FOUND = ["duplicate", "company", "director", "site", "core_checks",
+# (duplicate is NOT skipped: it only reads local client records, costs nothing, and an
+#  unresolvable vendor that is already on the client's books must still be caught.)
+SKIP_WHEN_NOT_FOUND = ["company", "director", "site", "core_checks",
                        "lookalike", "copied_site", "media", "timeline"]
 
 POLL_SECONDS = 1.0
 
 
-def load_step(step_name: str, module_name: str):
-    """Return the owner's step function, or the stub if they haven't written it yet."""
-    func_name = f"step_{step_name}"
-    func = None
-    try:
-        module = importlib.import_module(module_name)
-        func = getattr(module, func_name, None)
-    except ModuleNotFoundError as e:
-        if e.name != module_name:   # the module exists but one of ITS imports is broken: show that error
-            raise
-    return func or getattr(stubs, func_name)
-
-
 def get_step_functions() -> list[tuple[str, callable]]:
-    return [(name, load_step(name, module)) for name, module in STEPS]
+    """The owner's step_<name> function, or the stub if they haven't written it yet."""
+    return [(name, stubs.owned_or_stub(module, f"step_{name}")) for name, module in STEPS]
 
 
 def check_ceilings(run_id: int) -> str | None:
@@ -94,15 +84,23 @@ async def run_step(run_id: int, step_name: str, func, ctx) -> tuple[dict | None,
         run = db.get_run(run_id)
         time_left = max(run["time_limit_s"] - run["elapsed_s"], 1)
         started = time.monotonic()
+        db.log_event(run_id, "step_start", step_name, attempt=attempt)
         try:
             output = await asyncio.wait_for(_call(func, ctx), timeout=time_left)
+            db.log_event(run_id, "step_end", step_name, attempt=attempt, duration_ms=_ms(started))
             return _as_dict(output), None
         except Exception as e:   # a kill (KeyboardInterrupt/SIGKILL) is NOT caught: the run stays 'running'
             error = f"{type(e).__name__}: {e}"
             print(f"[run {run_id}] step {step_name} attempt {attempt} failed: {error}")
+            db.log_event(run_id, "step_error", step_name, attempt=attempt, duration_ms=_ms(started),
+                         error=error, will_retry=attempt == 1)
         finally:
             db.add_elapsed(run_id, time.monotonic() - started)
     return None, error
+
+
+def _ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
 
 
 def failed_output(step_name: str, error: str) -> dict:
@@ -127,6 +125,7 @@ async def process_run(run_id: int):
     outputs = db.get_step_outputs(run_id)         # steps already checkpointed before a crash
     ctx = {"run_id": run_id, "client_id": run["client_id"], "input": run["input"],
            "outputs": outputs, "config": cfg}
+    db.log_event(run_id, "run_resumed" if outputs else "run_started", steps_already_done=sorted(outputs))
 
     for step_name, func in get_step_functions():
         if step_name in outputs:                  # checkpointed -> skip (this is the resume)
@@ -141,10 +140,12 @@ async def process_run(run_id: int):
             if step_name in SKIP_WHEN_NOT_FOUND:  # nothing found: go straight to the verdict
                 outputs[step_name] = {"skipped": "company not resolved"}
                 db.finish_step(run_id, step_name, "skipped", outputs[step_name])
+                db.log_event(run_id, "checkpoint", step_name, status="skipped")
                 continue
 
         reason = check_ceilings(run_id)
         if reason:
+            db.log_event(run_id, "ceiling", step_name, reason=reason)
             db.set_run_status(run_id, "held", reason)
             return
 
@@ -154,8 +155,18 @@ async def process_run(run_id: int):
         if error is not None:                     # failed twice: record 'unknown' and carry on
             output = failed_output(step_name, error)
             db.finish_step(run_id, step_name, "failed", output)
+            db.log_event(run_id, "checkpoint", step_name, status="failed", error=error)
             outputs[step_name] = output
             continue
+
+        if step_name == "intake" and output.get("input"):   # later steps see the completed input
+            db.update_run_input(run_id, output["input"])
+            ctx["input"] = output["input"]
+
+        if output.get("await_input"):             # not enough to go on: a person adds the name/website
+            db.finish_step(run_id, step_name, "held", {k: v for k, v in output.items() if k != "evidence"})
+            db.set_run_status(run_id, "awaiting_input", output["await_input"])
+            return
 
         if output.get("hold"):                    # e.g. credits ran out (402): stop, don't checkpoint
             db.finish_step(run_id, step_name, "held", {"hold": output["hold"]})
@@ -163,6 +174,7 @@ async def process_run(run_id: int):
             return
 
         db.finish_step(run_id, step_name, "done", output)   # CHECKPOINT
+        db.log_event(run_id, "checkpoint", step_name, status="done", evidence=len(output.get("evidence", [])))
         outputs[step_name] = output
         if step_name == "duplicate" and output.get("duplicate_of"):
             db.set_duplicate_of(run_id, output["duplicate_of"])
@@ -173,10 +185,10 @@ async def process_run(run_id: int):
 async def drain_queue():
     """Process queued runs until none are left (used by the CLI and tests)."""
     while (run := db.next_queued_run()) is not None:
-        await _safe_process(run["id"])
+        await process_run_safe(run["id"])
 
 
-async def _safe_process(run_id: int):
+async def process_run_safe(run_id: int):
     try:
         await process_run(run_id)
     except Exception as e:   # unexpected engine error: fail the run visibly, keep the worker alive
@@ -194,4 +206,4 @@ async def worker_loop():
         if run is None:
             await asyncio.sleep(POLL_SECONDS)
             continue
-        await _safe_process(run["id"])
+        await process_run_safe(run["id"])

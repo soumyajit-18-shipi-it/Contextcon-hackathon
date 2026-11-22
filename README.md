@@ -8,7 +8,7 @@ Veri¯ty helps a logistics company review a new carrier or supplier before the f
 
 ★ **Who pays today:** procurement and compliance teams at mid-size Indian 3PLs, and outside verification firms paid per vendor. They currently pay analyst time to reconcile sources that do not share a common key.
 
-★ **Input:** the API accepts one request object with `name` (required), `website`, `director`, `claimed_year`, and `request_text`. The shape is implemented as `RunInput` in `backend/main.py`. The organizer kickoff kit's batch format and client data are not present in this repository, so no kickoff-specific mapping is claimed.
+★ **Input:** the API accepts one request object with `name` (required), `website`, `director`, `claimed_year`, and `request_text`. The shape is implemented as `RunInput` in `backend/main.py`. The CLI accepts a batch `{"cases":[...]}` file; its temporary `vendor_name`/`request` mapping is in `backend/config.yaml`. The organizer's final kickoff kit/schema and client records are still unavailable, so this mapping must be confirmed before submission.
 
 ★ **Finished result:** a report with a verdict, evidence and missing information, followed by a human clear/reject decision with a required reason.
 
@@ -18,7 +18,7 @@ Veri¯ty helps a logistics company review a new carrier or supplier before the f
 
 ![Veri¯ty architecture](docs/architecture.png)
 
-Editable source: [docs/architecture.svg](docs/architecture.svg). The diagram reflects the documented design; the B/C data and web implementations are currently stubs in this checkout. The actual engine/API/database pieces are described below.
+Editable source: [docs/architecture.svg](docs/architecture.svg). The batch CLI, data client and company/site retrieval are implemented. Media screening, copied-site checks, timeline checks and explanation generation remain stubs; the diagram labels these limits.
 
 ## Data sources and API use
 
@@ -36,7 +36,7 @@ Editable source: [docs/architecture.svg](docs/architecture.svg). The diagram ref
 - Client vendor records for duplicate checks
 - LLM, planned for constrained fact extraction and explanation writing only; it does not decide checks or verdicts.
 
-The actual `backend/data/steps.py`, `backend/data/crustdata.py`, `backend/web/steps.py`, and `backend/web/llm.py` are absent in this checkout. The above list is the contract's intended source inventory, not a claim that these requests have been made. The API does implement `GET /ledger?run_id=`; the frontend reads the returned rows and summary.
+The Crustdata client and company identify/enrich, person enrich, job search, and site retrieval steps are implemented. The configured calls use Company Identify, Company Enrich, Person Enrich, Job Search, and Web Fetch (`/web/enrich/live`); the client records request sources and provider costs in the ledger and handles timeouts/retries, rate limits, 429 backoff and 402 holds. The currently implemented website step fetches the vendor site and an About page when available. Web Search (`/web/search/live`) and the other planned media/copy checks are not yet run by a completed pipeline step. An Anthropic transport and constrained JSON LLM helper are present; they require an API key and are used for extraction/explanations only, never verdict rules. `/credits` calls Crustdata's account balance helper when configured. No external calls were made during this merge audit; check `NOTES.md` for dated earlier probe/run details and their rule-version caveat.
 
 ## Evidence and verdict rules
 
@@ -53,15 +53,15 @@ Every `cant_verify` item names what is missing. An errored or timed-out source i
 
 ## Reliability, costs and approval
 
-Each run is processed through fixed steps and checkpointed in SQLite. The worker requeues interrupted `running` runs at startup and skips saved completed steps. A failed step is retried once by the engine; after two failures its evidence is `unknown`. Time, credit and INR ceilings are read from `backend/config.yaml` and checked before each step. Provider-specific 429 wait behavior and per-run cache behavior depend on the currently absent data client and are not implemented or verified in this checkout. A provider 402 should hold the run according to the contract.
+Each run is processed through fixed steps and checkpointed in SQLite. The worker requeues interrupted `running` runs at startup and skips saved completed steps. A failed step is retried once by the engine; after two failures its evidence is `unknown`. The Crustdata client has endpoint rate limits, per-run successful-call caching, timeout/5xx retries and 429 backoff; 402/credit exhaustion holds the run. Time, credit and INR ceilings are read from `backend/config.yaml` and checked before each step. The CLI supports batch input, parallel runs and input-hash resume; do not run it and the API server against the same database simultaneously.
 
 Approval requires `decision`, `reason` (at least three characters), and `user`; `approvals.run_id` is unique and a second attempt receives HTTP 409. Known duplicates cannot be cleared again through the current API. Candidate selection posts an index to `/runs/{id}/select-candidate`.
 
-★ **Finance:** target buyer is 3PL procurement/compliance or a verification firm; pricing is intended to be per vendor. `backend/config.yaml` currently sets `inr_per_credit: 0.0`. No real integrated ledger totals or sourced manual-review cost were available in this checkout, so measured cost per check, proposed price and manual-cost comparison are **pending**. The app displays per-call provider, endpoint/model, credits, tokens, INR, latency, status and timestamp when rows exist. Do not substitute fixture or placeholder values for actual ledger data.
+★ **Finance:** target buyer is 3PL procurement/compliance or a verification firm; pricing is intended to be per vendor. The ledger records provider calls, and `/stats` reports credits, seconds and rupees per finished run. Current `inr_per_credit` and `usd_to_inr` settings are explicitly marked placeholders (Crustdata public credit pricing and a sourced exchange rate are not supplied), so rupee costs and a measured cost comparison are not final. A historical real run is recorded in `NOTES.md` under the earlier rules; do not present it as an acceptance result under the current required-news-screen rule. Sourced proposed pricing and manual-review cost remain pending.
 
 ## ★ Ethics and personal data
 
-The intended minimisation policy limits director data to name, current title/employer, start date, city and current-role count; used fields should be written to `personal_data_log` with source and purpose. The UI displays those logged fields with the note “Only fields needed for this check are stored.” Media results have labels; namesake-cleared results are visually distinguished and should include a reason. The backend requires a person to approve/reject with a reason. The workflow does not contact real people. Explanation quality and exact evidence citations depend on the absent Member C implementation.
+Director enrichment is limited to at most two people and the intended fields; used fields are written to `personal_data_log` with source and purpose. The UI displays those logged fields with the note “Only fields needed for this check are stored.” The website step and LLM helper exist, but adverse-media matching/namesake clearing, copied-site detection, timeline anomalies and final explanation generation remain stubs. The verdict config requires a verified adverse-media screen for clearance, so a run without it must not clear. The backend requires a person to approve/reject with a reason. The workflow does not contact real people. No retention/deletion job or approved retention period is present.
 
 ★ **Retention:** no retention/deletion job or period is implemented in this checkout. A production operator must define an approved retention period and implement deletion before processing real personal data.
 
@@ -71,7 +71,7 @@ The intended minimisation policy limits director data to name, current title/emp
 |---|---|---|
 | T1–T8 | See [tests/cases.md](tests/cases.md) | Pending integration with live data steps and client records |
 
-The reserved fixtures test behavior only and do not imply a live company check. The exact kickoff input/output and client records are absent. The backend CLI (`backend/cli.py`) is also absent; `tests/cases.inputs.json` contains request bodies matching the actual `POST /runs` schema, not a claimed CLI format. The 2-minute demo plan is at [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md); the recording is pending.
+The reserved fixtures test behavior only and do not imply a live company check. The organizer kickoff kit/client records are absent; the field mapping in `backend/config.yaml` is temporary. `tests/cases.inputs.json` contains direct `POST /runs` bodies, while [tests/cases.cli.json](tests/cases.cli.json) uses the current CLI/config mapping and is not claimed to be the organizer's final kickoff schema. Run the offline suite with `PYTHONPATH=. .venv/bin/pytest -q`; latest merged run: **83 passed**. Live expected-versus-actual case results remain pending. The two-minute demo plan is at [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md); the recording is pending.
 
 ★ **Demo video:** Pending. No hosted video URL exists yet; record only after the live data/web integrations are in place. Do not show fixture or stub output as a live check.
 
@@ -79,7 +79,7 @@ The reserved fixtures test behavior only and do not imply a live company check. 
 
 The chosen design is a fixed, checkpointed pipeline with code-based verdict rules and a constrained LLM role. A single LLM agent with tools would be less reproducible and more exposed to prompt injection. A planner that chooses checks could be considered later.
 
-Known limits in this checkout: the data and web layers are stubs; no CLI or kickoff mapping/client records; no measured live cost or expected-vs-actual run results; no data-retention implementation; no recorded demo; source `field_path` is available only when attached to an evidence item (the source endpoint itself does not return it). `npm install` reported two advisories (one moderate, one high); the npm audit endpoint was unreachable from this environment, so details remain unverified. Next: complete B/C modules, obtain kickoff assets, verify actual calls and costs, exercise all cases and restart/approval flows on live data, implement retention, export/verify the diagram, and record the live demo.
+Known limits in this checkout: adverse media/namesake, copied-site, timeline and explanation steps are stubs; no organizer kickoff kit or client records; no final output mapping; cost conversion rates remain placeholders; no current-rule live acceptance results; no data-retention implementation; no recorded demo; source `field_path` is supplied by the clicked evidence item rather than the source endpoint. `npm install` previously reported two advisories (one moderate, one high); registry access failed during that audit, so details remain unverified. Next: obtain kickoff assets, verify real costs, finish remaining web/media checks and explanations, exercise cases and restart/approval flows on the live service, define retention, and record the live demo.
 
 ## Setup and run
 
@@ -103,12 +103,18 @@ NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 
 Frontend checks: `npm run typecheck`, `npm run lint`, and `npm run build` from `frontend/`.
 
-Environment variables: `CRUSTDATA_API_KEY` (needed when the live data client is implemented), `LLM_API_KEY` (provider variable to be finalized by Member C), `VERITY_DB_PATH` (optional; defaults to `verity.db`), and `NEXT_PUBLIC_API_URL` (defaults in the frontend to `http://localhost:8000`). Never commit `.env` or credentials.
+Batch CLI (the field names currently follow the temporary mapping in `backend/config.yaml`):
+
+```sh
+PYTHONPATH=. python -m backend.cli --input tests/cases.cli.json --output /tmp/verity-results.json
+```
+
+Environment variables: `CRUSTDATA_API_KEY`, `ANTHROPIC_API_KEY` (or `LLM_API_KEY`), `CRUSTDATA_WEB_FETCH_ENDPOINT`, `VERITY_DB_PATH`, `VERITY_LOG_PATH`, and `NEXT_PUBLIC_API_URL`. Use `.env.example` as a template. Never commit `.env` or credentials.
 
 ## ★ Open-source credits and team
 
-Backend dependencies declared: FastAPI, Uvicorn, httpx, rapidfuzz, PyYAML, Pydantic, python-dotenv, pytest. Frontend dependencies: Next.js, React, TypeScript, Tailwind CSS, PostCSS, Autoprefixer, ESLint and `eslint-config-next`. `frontend/package-lock.json` records the frontend install; review transitive licenses before redistribution.
+Backend dependencies declared: FastAPI, Uvicorn, httpx, rapidfuzz, PyYAML, Pydantic, python-dotenv, pytest, Anthropic SDK and jsonschema. Frontend dependencies: Next.js, React, TypeScript, Tailwind CSS, PostCSS, Autoprefixer, ESLint and `eslint-config-next`. `frontend/package-lock.json` records the frontend install; review transitive licenses before redistribution.
 
-Soumyajit / Lead: API, DB, engine, verdict and integration. Member B: Crustdata/data/ledger/client-record layer (pending in this checkout). Member C: web/media/LLM/explanations (pending in this checkout). Member D: frontend, test cases and delivery docs.
+Soumyajit / Lead: API, DB, engine, verdict, duplicate/look-alike, CLI and integration. Member B: Crustdata client, company/director/activity checks, ledger, credits, client-record loader and output mapping. Member C: website retrieval and LLM helper integrated; copied-site, adverse-media/namesake, timeline and explanation steps remain pending. Member D: frontend, acceptance cases, README, architecture diagram and demo preparation.
 
 Repository history begins with the kickoff-period baseline commit visible in Git; no claim of pre-kickoff work is made here.

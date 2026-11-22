@@ -6,6 +6,19 @@ defines step_<name> in their own module, theirs is used automatically. Nobody ed
 Stubs never invent data: every check comes back 'cant_verify' with "STUB" in `missing`,
 and every output carries "stub": True so the report lists which steps were not real.
 """
+import importlib
+import sys
+
+
+def owned_or_stub(module_name: str, func_name: str):
+    """The owner's function if their module defines it, else the stub of the same name here."""
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as e:
+        if e.name != module_name:   # the owner's file exists but one of ITS imports is broken: show that
+            raise
+        module = None
+    return getattr(module, func_name, None) or getattr(sys.modules[__name__], func_name)
 
 
 def _not_implemented(check: str, owner: str, claim: str) -> dict:
@@ -81,17 +94,3 @@ async def step_timeline(ctx):
 async def step_explain(ctx):
     """STUB – owned by C. Real version: llm_json plain-language explanation citing evidence ids."""
     return {"stub": True, "explanation": None}
-
-
-# ---------------- STUB – owned by B (backend/data/output_map.py) ----------------
-
-def build_output(data: dict, output_fields: dict) -> dict:
-    """STUB – owned by B. Maps our results to the kickoff output format.
-    output_fields = {kickoff_field: "dotted.path.in.data"}, e.g. {"verdict": "verdict.verdict"}."""
-    out = {}
-    for kickoff_field, path in output_fields.items():
-        value = data
-        for part in path.split("."):
-            value = value.get(part) if isinstance(value, dict) else None
-        out[kickoff_field] = value
-    return out

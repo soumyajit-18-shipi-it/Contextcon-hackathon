@@ -55,14 +55,20 @@ Scope: Member D frontend, acceptance cases, README, architecture diagram and dem
 - `FINAL_DELIVERY_AUDIT.md` — this audit.
 - `docs/architecture.svg`, `docs/architecture.png` — clarified kickoff output mapping stub.
 - Existing Member D workspace files remain present: `README.md`, `NOTES.md`, `REMAINING_WORK.md`, `docs/DEMO_SCRIPT.md`, `tests/cases.md`, `tests/cases.json`, `tests/cases.inputs.json`, and frontend app/config/component/client files under `frontend/`.
-- Git status shows `.gitignore` and `NOTES.md` modified and the Member D README/docs/frontend/tests files untracked relative to the current HEAD. The original empty `frontend/.gitkeep` was restored. No changes were committed. Review and stage the intended files before submission; do not assume they are included in a commit.
+- At the time of this audit, `.gitignore`/`NOTES.md` were modified and the Member D deliverables were untracked. They have since been committed locally before the requested upstream merge; the follow-up merge status is recorded below.
 
 ## Actions Ravi must complete before submission
 
-1. Obtain the organizer kickoff kit/schema and client records; ask the Lead to supply/confirm the CLI and output mapping. Keep `.example` fixtures out of live-result claims.
-2. Confirm B and C have completed real data, web/media, explanations, personal-data logging, source metadata and ledger/credits integration. Confirm Lead-owned duplicate checks and restart behavior.
+1. Obtain the organizer kickoff kit/schema and client records; update the temporary CLI/output mapping in `backend/config.yaml` to match it. Keep `.example` fixtures out of live-result claims.
+2. Confirm the implemented B client/checks and C website/LLM helper run against the team's credentials. Complete/confirm C's media/namesake, copied-site, timeline and explanation steps and verify Lead-owned duplicate checks and restart behavior.
 3. Supply provider credentials through local environment variables only; run T1–T8 against the integrated service and record expected versus actual results without presenting stub results as live.
 4. Obtain the Lead’s sourced manual-verification comparison, proposed price, measured per-check cost and any accepted retention period. Update README and NOTES with verified values only.
 5. Start the integrated system in a browser, inspect desktop/mobile layouts, console/network, evidence/source navigation, candidate selection, duplicate handling, approval/rejection and second-approval 409.
 6. Record and host the two-minute live demo, add its URL to README, and ensure it shows real evidence and actual ledger values.
-7. Review `git status --short`, stage the intended files, inspect the staged diff, and make the required final commit before code freeze. No commit was made by this audit.
+7. After the requested push finishes, review `git status --short` and confirm the expected merge commit is on the remote. No force push is intended.
+
+## Post-pull / merge addendum
+
+After this audit, `origin/main` advanced from `96714c9` to `7eb4380`, adding B's Crustdata/data/client-record/CLI work, C's website retrieval and LLM helper, Lead's duplicate/look-alike/events/stats work, and related tests. The local Member D package was committed as `f3463d1` per the user's push request. `git merge origin/main` was started; `.gitignore` merged automatically and `NOTES.md` had a content conflict. The NOTES conflict was resolved by preserving both the Member D audit history and upstream technical notes. README, acceptance cases and architecture were updated to reflect the new code.
+
+Post-merge checks: frontend typecheck, lint and production build passed; `PYTHONPATH=. .venv/bin/pytest -q` passed **83 tests in 8.58s**; `tests/cases.cli.json` loaded as 8 cases using the current config; all three JSON fixtures parsed; and `git diff --check` passed. The full suite initially could not collect because this ignored virtualenv lacked the upstream-declared `anthropic` and `jsonschema` packages; after installing `requirements.txt` into `.venv`, the suite passed. No provider calls were made by the tests. The merge commit and push are still pending.

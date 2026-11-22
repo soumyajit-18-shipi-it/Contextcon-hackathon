@@ -27,3 +27,6 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Run event log (structured JSON lines)
+logs/

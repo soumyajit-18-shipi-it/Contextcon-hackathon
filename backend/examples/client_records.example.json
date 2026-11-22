@@ -1,0 +1,6 @@
+{
+  "vendors": [
+    {"name": "Example Roadways Pvt Ltd", "website": "exampleroadways.in", "director": "A. Example", "gstin": "00EXAMPLE0000X0X0"},
+    {"name": "Sample Cold Chain Logistics", "website": "samplecoldchain.com", "director": "B. Sample", "gstin": null}
+  ]
+}

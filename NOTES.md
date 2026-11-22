@@ -1,5 +1,22 @@
 # NOTES
 
+## Member C implementation increment — 2026-11-22
+
+- Added website retrieval adapter, deterministic HTML/text helpers, source-linked
+  year extraction, and an injectable JSON Schema validated LLM helper.
+- Preserved atomic engine checkpointing: steps return evidence instead of writing
+  evidence rows. Timeouts remain unknown and 402 outcomes hold the run.
+- Integration is pending Member B's client, confirmed fetch endpoint/payload, and
+  a configured LLM transport with sourced pricing. No paid/live calls made.
+- Later media, copied-site, timeline, and explanation steps remain explicit stubs.
+- Added offline tests for provenance, timeout/empty separation, credit exhaustion,
+  URL filtering, malformed LLM JSON retries, accounting, and budget prevention.
+- Validation: 23 tests passed (tests/test_web.py and tests/test_engine.py) in a
+  project-local virtual environment using Python 3.12; git diff --check passed.
+  Python 3.11 and live provider compatibility still need validation.
+- Before pushing: merged the latest origin/main without conflicts; all 56 web
+  and engine tests passed. Updated the documented command for the moved engine tests.
+
 Everyone appends here: what we tried, what worked, what broke. Newest at the bottom. Prefix with your name.
 
 ## Lead (Soumyajit)
@@ -13,7 +30,6 @@ Everyone appends here: what we tried, what worked, what broke. Newest at the bot
 - Time ceiling counts work time (runs.elapsed_s), not wall clock, so a kill + restart on stage doesn't push a run over the limit.
 - Windows: pytest's default temp dir was locked in our sandbox; use --basetemp=<writable dir> if you hit WinError 5.
 - First end-to-end run (stubs): POST /runs -> 13 steps -> awaiting_approval, CANNOT VERIFY; approve once OK, second approve -> 409.
-
 ## Member D
 
 - 2026-11-22 Repo audit: project brief is in `docs/handoffs/00_PROJECT_BRIEF.md`; kickoff formats/client records are still absent. API routes and response shape are implemented in `backend/main.py`; B/C step modules and CLI are not present yet.
@@ -41,4 +57,46 @@ Everyone appends here: what we tried, what worked, what broke. Newest at the bot
 - 2026-11-22 final delivery audit: checked the handoff in `docs/handoffs/00_PROJECT_BRIEF.md`, actual FastAPI routes, UI API client, case fixtures, README and diagrams. Corrected the architecture node to label kickoff output mapping as a stub and regenerated/visually checked the 1500×900 PNG.
 - Re-ran frontend `npm run typecheck`, `npm run lint`, and `npm run build` successfully; backend `PYTHONPATH=. .venv/bin/pytest -q` passed 10 tests. Eight case JSON request bodies validate as `RunInput`; both JSON files parse; `git diff --check` passes.
 - Production route smoke returned HTTP 200 for `/`, `/history`, `/runs/123`. An isolated TestClient smoke passed run list/detail, source, ledger, credits, candidate selection, first approval and second approval 409, with no external provider calls. Browser console/visual interaction and frontend tests remain unavailable/not configured.
-- Secret-pattern scan found no common API-key/private-key patterns. No commit made. See `FINAL_DELIVERY_AUDIT.md` for verified scope, blockers, exact submission actions and workspace Git status.
+- Secret-pattern scan found no common API-key/private-key patterns. At the time of that audit no commit had been made. See `FINAL_DELIVERY_AUDIT.md` for verified scope, blockers, exact submission actions and merge follow-up.
+- Phase 2 duplicate: client vendors (exact domain = hard + blocks clearing; same director + name >= 90 = soft; name >= 85 = look-alike name, soft) and earlier runs (same domain = soft; blocks clearing unless that run was rejected). Client records load via B's client_records.load_client_records(cfg, client_id) or the stub (JSON list at config client.records_path).
+- Phase 2 look-alike: brand_key (drop TLD/hyphens/filler words, 0->o 1->l rn->m) + Levenshtein <= lookalike_max_edit or brand contained -> hard. Safeguards: name's record lists the vendor domain, or name + website resolve to the same company. Known limit: honest .in/.com pair where Crustdata knows neither the .in domain nor lists it -> 1 hard -> HOLD (cautious, never FRONT alone). Not done: checking the official site links to the vendor domain (needs one more fetch).
+- Verdict: FRONT counts DISTINCT checks and excludes duplicate checks (verdict_rules.review_only_checks). Bug this prevents: exact duplicate (hard) + one other hard would have called a known client vendor a front.
+- Normalisation lives in backend/engine/names.py; B can import it instead of writing a second copy in backend/data/normalize.py.
+- Verdict order changed: an exact domain match with a client vendor -> HOLD FOR REVIEW (rule 1_exact_duplicate) BEFORE cannot verify, so a vendor already on the client's books is never reported as merely "cannot verify". The duplicate step now also runs when the company can't be resolved (local records, zero API cost). Rules renumbered 0-6.
+- Batch CLI: `python -m backend.cli --input cases.json --output results.json [--parallel 2]`. Each case is keyed by sha256(case id + input) -> same run on a re-run, so kill + re-run resumes and never duplicates. Results file is rewritten atomically after every run. Runs that stop early (ceiling, candidate pick, error) are reported as HOLD FOR REVIEW with the reason, never guessed. Input/output shapes are TEMPORARY; remap only in config.yaml (batch_format, input_fields, output_fields).
+- Don't point the CLI and the API server at the same DB at once: both re-queue 'running' runs on start. Use VERITY_DB_PATH to separate them.
+
+### Known limits (for the README)
+- Look-alike, honest .in/.com pair: if the vendor uses brand.in, the name resolves to the company with brand.com, Crustdata's record does not list brand.in in all_domains, AND identifying brand.in returns no company (or a different id), we raise ONE hard flag "possible impersonation". One hard flag alone is HOLD FOR REVIEW, never SUSPECTED FRONT, so an honest firm is held for a person, not accused. Fix not built: fetch the official site (brand.com) and pass if it links to brand.in (costs one extra web fetch per run).
+- Integrated C's first increment (step_site, websearch, llm_json, textutil): 56/56 tests pass. Conventions OK (returns evidence, no evidence inserts, timeout -> unknown, 402 -> hold, calls crustdata.call(run_id, endpoint, payload)). Moved tests/test_web.py -> backend/web/tests/ (tests/ is D's).
+- For C: (1) no LLM transport is configured anywhere, so llm_json always raises LLMUnavailable -> pick the provider, add the transport at startup + sourced INR token prices (explain, media extraction and intake all need it); (2) copied_site, media, timeline, explain still run as engine stubs; (3) web evidence has record_date=None (pages have none) -> D shows sources.retrieved_at instead; (4) Lead will switch llm._record to data/ledger.record() once it exists so cost totals live in one place; (5) fetch endpoint/payload gets confirmed from the Crustdata docs in the client step.
+
+## Crustdata: real field names (probed 2026-11-22 with Delhivery, delhivery.com; 6 calls, 5.23 credits)
+All calls: headers `authorization: Bearer`, `x-api-version: 2025-11-01`. Cost per call = response header `X-Credits-Used` (decimal string; 0 on errors; absent on 429). Balance: GET /account/credits -> account.credits (free).
+| Endpoint | Request we send | Credits seen | Fields we use |
+|---|---|---|---|
+| POST /company/identify | {domains:[..]} or {names:[..]}, fields:[basic_info] | 0.2 (only if matched) | [i].matches[j].confidence_score, .company_data.crustdata_company_id, .basic_info.{name, primary_domain, all_domains[], website, year_founded, employee_count_range, company_type, status} |
+| POST /company/enrich | {crustdata_company_ids:[id], fields:[basic_info, headcount, people, locations, web_traffic]} | 2.0 | company_data.basic_info.*; headcount.total, headcount.timeseries[{date, employee_count}] (204 points, last = freshness date), headcount.growth_percent.{mom,qoq,six_months,yoy,two_years}; web_traffic.domain_traffic.<domain>.monthly_visitors; locations.{headquarters, city, state, country}; people.{founders,cxos,decision_makers}[] each with crustdata_person_id, basic_profile.{name, current_title}, social_handles.professional_network_identifier.profile_url, updated_at, experience (embedded shape uses employer_name / employee_title / employee_start_date / employer_company_id). company_data.updated_at is NOT returned -> we use the last headcount.timeseries date as the record date. |
+| POST /person/enrich | {professional_network_profile_urls:[url], fields:[basic_profile, experience]} | 1.0 | person_data.basic_profile.{name, location.city/state/country/raw}; experience.employment_details.current[]{name, title, start_date, crustdata_company_id, company_website_domain} (+ past[]). No updated_at returned -> record date taken from the company-enrich people entry's updated_at. |
+| POST /job/search | {filters:{field:"company.basic_info.company_id", type:"=", value:id}, fields:[job_details.title, job_details.url, metadata.date_added], sorts:[{field:metadata.date_added, order:desc}], limit:1} | 0.03 | job_listings[].job_details.{title,url}, .metadata.date_added; total_count |
+| POST /web/search/live | {query, sources:[news]} | 1.0 per page | results[]{source,title,url,snippet,position}; metadata.total_results. News urls are google.com/goto redirect links. |
+| POST /web/enrich/live (web FETCH) | {urls:[..]} (1-10) | 1.0 | [i]{success, url, timestamp, title, content (full HTML), http_status}. CRUSTDATA_WEB_FETCH_ENDPOINT=/web/enrich/live |
+- Data quirk worth knowing: a founder can hold several "current" roles (Delhivery co-founder had 4: advisor/investor elsewhere). nominee_roles threshold (5) must stay above normal founder/investor patterns.
+- INCIDENT (fixed): once the real client existed, the test suite made live calls (C's step_site + CLI tests load .env) -> ~25 credits gone and tests took 147 s. backend/conftest.py now blanks both API keys for every test; suite back to 12 s with the balance unchanged.
+- LLM: Anthropic (detected from the key format in .env), model claude-haiku-5-5, $0.10 / $0.50 per MTok (list price), effort low, structured output via output_config.format json_schema. usd_to_inr is a PLACEHOLDER in config.
+- First real end-to-end run (12:45 checkpoint): Delhivery (delhivery.com) via POST /runs -> 13 steps -> CLEARED, 8 Crustdata calls, 6.43 credits, 77.8 s. Concern raised: it cleared without a news screen (adverse_media still a stub).
+- Fix: verdict_rules.required_for_clear: [adverse_media]. A run is only CLEARED if every check in that list is verified; otherwise HOLD FOR REVIEW "news screen not completed" (rule 5_required_check_missing). copied_site can be added to the list later.
+- LLM price sourced: Claude Haiku 5.5 $0.10 in / $0.50 out per MTok (prompts up to 100K tokens), https://platform.claude.com/docs/en/about-claude/pricing, checked 2026-11-22.
+- Crustdata balance at 12:56 IST 2026-11-22: 15,163.48 credits (= 15,175.14 before the probe - 5.23 probe - 6.43 Delhivery run). ~37 credits used today in total, ~25 of them by the accidental live test run.
+- Step 4: answers are plain text ("claim [#id]"); client records load from JSON or CSV with column names in config client.record_fields, reloaded when the file changes; output_map.build_output = dotted paths + named formatters ("fn:status_text" etc.), so a new output field is one config line.
+- Step 5a intake: first step. Client fields never overwritten; regex finds a URL in free text; Claude Haiku 5.5 extracts the rest (prompt intake-v1, ledgered) and a value is kept ONLY if it appears in the client's text. No name and no website -> awaiting_input; POST /runs/{id}/input continues the run. Real call checked: 550 in / 40 out tokens. It did not take "our contact, co-founder X" as the director (cautious; a person can add it).
+- Step 5b event log: events table + logs/runs.jsonl (gitignored). Every status change is logged inside db.set_run_status, so holds/ceilings/waiting states/failures can't be missed; run_step logs step_start/step_end(duration_ms)/step_error(will_retry). GET /runs/{id}/events.
+- Step 5c GET /stats: avg/max credits, rupees, seconds per check over finished runs + verdict/decision counts; lists placeholder rates. Note: run #1 (Delhivery) still shows CLEARED: verdicts are stored when made, under the rules of that moment (required_for_clear came after).
+
+## Member D / merge follow-up — 2026-11-22
+
+- User requested pull/merge/push. Fetched `origin/main` from `96714c9` to `7eb4380`; local Member D delivery package was committed as `f3463d1` before merging.
+- Merge auto-resolved `.gitignore`; manually resolved `NOTES.md` by preserving both Member D audit history and upstream Lead/B/C implementation notes. No backend source or contract conflict was introduced.
+- Updated README, acceptance-case notes and architecture to reflect upstream Crustdata/data/CLI/site retrieval and to mark remaining copied-site/media/namesake/timeline/explanation work as stubs. Added `tests/cases.cli.json` to match the current temporary `config.yaml` CLI mapping; organizer format remains unconfirmed.
+- Installed newly declared `anthropic` and `jsonschema` packages into ignored `.venv`. Merged offline backend suite passes: 83 passed in 8.58s. CLI loader accepted all 8 reserved fixture cases. Frontend typecheck/lint/build pass. No external API calls were made during these tests.
+- Merge commit and push remain pending final staging/commit verification.

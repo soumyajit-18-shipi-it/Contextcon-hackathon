@@ -2,6 +2,8 @@
 
 Audit date: 2026-11-22. Reviewed `docs/handoffs/00_PROJECT_BRIEF.md`, `README.md`, `NOTES.md`, `tests/cases.md`, all repository paths under `frontend/`, `backend/`, `tests/` and `docs/`, `docs/architecture.svg`, the FastAPI routes, SQLite schema/helpers, orchestrator, verdict/report code and current Git status. Neither `AUDIT.md` nor `FINAL_AUDIT.md` exists. Existing work was retained; no backend contracts, schema or business rules were changed.
 
+**Post-merge note (2026-11-22):** the matrix below records the audit before pulling `origin/main`. Upstream subsequently added the Crustdata client and data checks, website retrieval/LLM helper, duplicate/look-alike logic, CLI, client-record loader, output mapping, events and stats. Those items are no longer absent; the append-only update at the end records their current state. Copied-site/media/namesake/timeline/explanation steps and the final kickoff schema remain incomplete.
+
 **Meaning of statuses:** COMPLETE means implemented and verified in this checkout. PARTIAL means UI/docs/engine support exists but integration or verification is incomplete. BLOCKED means required data or an owned component from another member is absent. MISSING means no deliverable exists.
 
 ## Requirement matrix
@@ -48,3 +50,17 @@ Audit date: 2026-11-22. Reviewed `docs/handoffs/00_PROJECT_BRIEF.md`, `README.md
 4. **Environment/organizer:** provide kickoff kit/client records, actual provider credentials and recording/hosting access; browser automation is not available in this session.
 
 No synthetic fixture facts are wired into frontend live responses. Do not present any fixture as a real company check. The current backend stubs intentionally return CANNOT VERIFY rather than fabricating clearance.
+
+## Post-merge reclassification
+
+| Requirement | Current status after `origin/main` merge | Evidence / remaining work |
+|---|---|---|
+| Crustdata client and core company/director/activity checks | PARTIAL | `backend/data/crustdata.py` and `backend/data/steps.py` are implemented with retry/rate-limit/cache/source/ledger logic. Current-rule live acceptance results and browser integration remain unverified. |
+| Duplicate and look-alike checks | PARTIAL | Lead implementations are present. Client records are configurable, but organizer records and the final client mapping/schema are absent. |
+| Website retrieval and LLM transport/helper | PARTIAL | Website step and Anthropic transport/helper exist. They require credentials and verified provider results; they do not complete media, copied-site, timeline or explanation steps. |
+| CLI and output mapping | PARTIAL | `backend/cli.py` and config-driven `output_map` are present. `tests/cases.cli.json` uses the repository's temporary map, not a verified organizer kickoff file. |
+| Personal-data log and ledger | PARTIAL | Schema/helpers and data-step writes exist. Privacy policy/retention and real current-rule cost measurements remain pending; configured rupee conversion rates are placeholders. |
+| Architecture | COMPLETE for the implemented shape | SVG/PNG updated to distinguish implemented client/CLI/site retrieval from remaining stubs. |
+| Live media/namesake/copy/timeline/explanation and demo | BLOCKED | These steps remain stubs; no live demo should be recorded until integrated and tested. |
+
+Added `tests/cases.cli.json` as a CLI-compatible set under the current temporary `backend/config.yaml` mapping. It is synthetic and must not be presented as the organizer's final kickoff input or live data. The merge audit ran the frontend checks and the expanded backend suite; results are recorded in `FINAL_DELIVERY_AUDIT.md` after completion.
