@@ -7,7 +7,6 @@ Resume logic (what the judges test by killing the server):
      B's Crustdata client caches per run, so that re-run makes zero new API calls.
 """
 import asyncio
-import importlib
 import inspect
 import time
 import traceback
@@ -34,27 +33,17 @@ STEPS = [
 ]
 
 # If the company can't be found at all, these are skipped and we go straight to the verdict.
-SKIP_WHEN_NOT_FOUND = ["duplicate", "company", "director", "site", "core_checks",
+# (duplicate is NOT skipped: it only reads local client records, costs nothing, and an
+#  unresolvable vendor that is already on the client's books must still be caught.)
+SKIP_WHEN_NOT_FOUND = ["company", "director", "site", "core_checks",
                        "lookalike", "copied_site", "media", "timeline"]
 
 POLL_SECONDS = 1.0
 
 
-def load_step(step_name: str, module_name: str):
-    """Return the owner's step function, or the stub if they haven't written it yet."""
-    func_name = f"step_{step_name}"
-    func = None
-    try:
-        module = importlib.import_module(module_name)
-        func = getattr(module, func_name, None)
-    except ModuleNotFoundError as e:
-        if e.name != module_name:   # the module exists but one of ITS imports is broken: show that error
-            raise
-    return func or getattr(stubs, func_name)
-
-
 def get_step_functions() -> list[tuple[str, callable]]:
-    return [(name, load_step(name, module)) for name, module in STEPS]
+    """The owner's step_<name> function, or the stub if they haven't written it yet."""
+    return [(name, stubs.owned_or_stub(module, f"step_{name}")) for name, module in STEPS]
 
 
 def check_ceilings(run_id: int) -> str | None:
@@ -173,10 +162,10 @@ async def process_run(run_id: int):
 async def drain_queue():
     """Process queued runs until none are left (used by the CLI and tests)."""
     while (run := db.next_queued_run()) is not None:
-        await _safe_process(run["id"])
+        await process_run_safe(run["id"])
 
 
-async def _safe_process(run_id: int):
+async def process_run_safe(run_id: int):
     try:
         await process_run(run_id)
     except Exception as e:   # unexpected engine error: fail the run visibly, keep the worker alive
@@ -194,4 +183,4 @@ async def worker_loop():
         if run is None:
             await asyncio.sleep(POLL_SECONDS)
             continue
-        await _safe_process(run["id"])
+        await process_run_safe(run["id"])

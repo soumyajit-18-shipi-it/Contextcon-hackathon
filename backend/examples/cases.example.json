@@ -1,0 +1,8 @@
+{
+  "cases": [
+    {"id": "example-1", "vendor_name": "Example Freight Carriers Pvt Ltd", "website": "examplefreightcarriers.in",
+     "director": "A. Example", "claimed_year": 2015, "request": "New carrier for the Pune-Delhi lane"},
+    {"id": "example-2", "vendor_name": "Example Cold Chain", "website": null,
+     "director": null, "claimed_year": null, "request": "Name only"}
+  ]
+}

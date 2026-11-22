@@ -17,8 +17,8 @@ rules:
   namesake_match: 60           # media match score >= this -> same person
   namesake_clear: 25           # media match score <= this (+ a contradicting fact) -> namesake cleared
   lookalike_max_edit: 2        # edit distance at or below this -> look-alike domain
-  duplicate_name_match: 90     # rapidfuzz score >= this + same director -> likely duplicate
-  lookalike_name_min: 85       # rapidfuzz score in [this, duplicate_name_match) + other domain -> look-alike name
+  duplicate_name_match: 90     # name score >= this + same director -> likely duplicate (soft)
+  lookalike_name_min: 85       # name score >= this, different director/domain -> look-alike name (soft)
 
 # Verdict rules (backend/engine/verdict.py). Plain code, no LLM.
 verdict_rules:
@@ -30,17 +30,39 @@ verdict_rules:
   activity_checks: [headcount_present, headcount_trend, hiring_activity, web_traffic]
   # A key check that comes back 'unknown' (source timed out/errored) -> HOLD FOR REVIEW
   unknown_key_checks: [domain_matches_record, director_current_role, adverse_media]
+  # Flags that send a run to HOLD but never count towards SUSPECTED FRONT (a known vendor is not a fraud)
+  review_only_checks: [duplicate_exact, duplicate_likely, duplicate_past_run]
 
 # Crustdata pricing, for the ledger's rupee column (B's ledger.py reads this).
 pricing:
-  inr_per_credit: 0.0          # TODO Lead: fill from Crustdata's pricing page (sourced number)
+  # PLACEHOLDER, NOT A SOURCED NUMBER. Crustdata publishes no public price per credit.
+  # Get the real figure from the ContextCon dashboard credits page or the Crustdata team,
+  # and until then the README must say any rupee cost is an assumption.
+  inr_per_credit: 0.0
+  inr_per_credit_is_placeholder: true
 
-# Our field -> kickoff output field. PLACEHOLDERS until docs/kickoff/ arrives.
-# Left side = the name in the kickoff output format, right side = where we take it from.
+# ---- Kickoff formats: the ONLY place to remap when docs/kickoff/ arrives (all TEMPORARY now) ----
+
+# Batch files for backend/cli.py
+batch_format:
+  cases_key: cases          # input file is {"cases": [...]} (a bare list also works)
+  case_id_field: id         # each case's id; copied into its result
+  results_key: results      # output file is {"results": [...]}
+
+# Input: our field -> field name in the kickoff input
+input_fields:
+  name: vendor_name
+  website: website
+  director: director
+  claimed_year: claimed_year
+  request_text: request
+
+# Output: kickoff output field -> where we take it from (dotted path into input/verdict/answers/run).
 output_fields:
   vendor_name: input.name
   website: input.website
   verdict: verdict.verdict
+  rule: verdict.rule
   reasons: verdict.reasons
   who_runs_it: answers.who_runs_it
   how_long_it_has_existed: answers.how_long_it_has_existed
@@ -49,6 +71,8 @@ output_fields:
   cannot_verify: answers.cannot_verify
   sources: answers.sources
   status: run.status
+  status_reason: run.status_reason
+  run_id: run.id
 
 client:
   name: TBD                                 # from the kickoff kit
