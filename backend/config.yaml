@@ -1,0 +1,56 @@
+# Verity configuration. Re-read at the START OF EVERY RUN (backend/config.py),
+# so a rule, limit or output-field change needs no restart: edit, save, next run uses it.
+# Live-fix cheat sheet: thresholds -> rules / verdict_rules, ceilings -> limits,
+# new output field -> output_fields.
+
+# Ceilings, checked before every step. Breaching one -> run status 'held'.
+limits:
+  time_limit_s: 180        # seconds of actual work (downtime during a crash is not counted)
+  credit_limit: 300        # Crustdata credits per run
+  cost_limit_inr: 25       # total rupees per run (Crustdata + LLM)
+
+# Thresholds used by the checks (B, C and Lead read these; no numbers in code).
+rules:
+  nominee_roles: 5             # director with >= this many current roles -> nominee pattern (hard)
+  claimed_age_gap_years: 2     # site claims to be older than the record by more than this -> hard
+  director_recent_days: 90     # director joined fewer than this many days ago -> soft
+  namesake_match: 60           # media match score >= this -> same person
+  namesake_clear: 25           # media match score <= this (+ a contradicting fact) -> namesake cleared
+  lookalike_max_edit: 2        # edit distance at or below this -> look-alike domain
+  duplicate_name_match: 90     # rapidfuzz score >= this + same director -> likely duplicate
+  lookalike_name_min: 85       # rapidfuzz score in [this, duplicate_name_match) + other domain -> look-alike name
+
+# Verdict rules (backend/engine/verdict.py). Plain code, no LLM.
+verdict_rules:
+  front_min_hard: 2            # SUSPECTED FRONT if hard flags >= this ...
+  front_one_hard_min_soft: 2   # ... or 1 hard + soft flags >= this
+  # Core facts: if every one of these is cant_verify (or missing) -> CANNOT VERIFY
+  core_checks: [domain_matches_record, name_location_consistent, headcount_present, director_current_role]
+  # Activity checks: at least one verified + unflagged -> the vendor is "active"
+  activity_checks: [headcount_present, headcount_trend, hiring_activity, web_traffic]
+  # A key check that comes back 'unknown' (source timed out/errored) -> HOLD FOR REVIEW
+  unknown_key_checks: [domain_matches_record, director_current_role, adverse_media]
+
+# Crustdata pricing, for the ledger's rupee column (B's ledger.py reads this).
+pricing:
+  inr_per_credit: 0.0          # TODO Lead: fill from Crustdata's pricing page (sourced number)
+
+# Our field -> kickoff output field. PLACEHOLDERS until docs/kickoff/ arrives.
+# Left side = the name in the kickoff output format, right side = where we take it from.
+output_fields:
+  vendor_name: input.name
+  website: input.website
+  verdict: verdict.verdict
+  reasons: verdict.reasons
+  who_runs_it: answers.who_runs_it
+  how_long_it_has_existed: answers.how_long_it_has_existed
+  is_it_trading: answers.is_it_trading
+  what_looks_off: answers.what_looks_off
+  cannot_verify: answers.cannot_verify
+  sources: answers.sources
+  status: run.status
+
+client:
+  name: TBD                                 # from the kickoff kit
+  records_path: data/client_records.json    # B's loader reads this
+  extra_rules: []
