@@ -44,10 +44,12 @@ LABELS = {
     "claimed_since": "Website claimed history", "footer_year": "Website copyright year",
     "director_start": "Director role start", "first_job_posting": "First recorded job posting",
     "headcount_change": "Recorded headcount change", "news": "Source-backed news event (not proof of trading)",
+    "latest_job_posting": "Latest recorded job posting",
 }
-ACTIVITY = {"first_job_posting", "headcount_change", "news"}
+ACTIVITY = {"first_job_posting", "latest_job_posting", "headcount_change", "news"}
 AUXILIARY = {"director_current_as_of", "coverage_from", "coverage_until", "coverage_complete", "coverage_activity_count",
-             "coverage_channels", "predecessor_confirmed", "predecessor_relation", "predecessor_since"}
+             "coverage_channels", "predecessor_confirmed", "predecessor_relation", "predecessor_since",
+             "predecessor_mention"}   # a grounded "formerly known as / acquired / rebranded" passage (Lead)
 
 
 def date_bounds(value):
@@ -212,6 +214,13 @@ def build_timeline(ctx, *, adapter=None, freshness_days=90):
                 flag = "soft"
                 deps.extend([confirmed, relation, since])
                 reason += "; verified predecessor history supports a legitimate " + relation["value"]
+            elif records.get("predecessor_mention"):
+                # Lead: a source says the business was renamed/acquired/rebranded, so the older claimed year may be
+                # the predecessor's history. Downgrade to soft and quote the passage; a person checks it.
+                mention = records["predecessor_mention"][0]
+                flag = "soft"
+                deps.append(mention)
+                reason += f"; downgraded to soft because a source says: \"{mention['value']}\""
         emit("claimed_age_mismatch", reason, deps, flag=flag, value={"gap_years": gap})
     else:
         unavailable("claimed_age_mismatch", ["founding", "claimed_since"],

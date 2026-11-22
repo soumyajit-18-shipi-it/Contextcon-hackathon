@@ -31,8 +31,13 @@ async def step_copied_site(ctx):
 
 
 async def step_timeline(ctx):
-    from backend.web.timeline import build_timeline
-    return build_timeline(ctx)
+    """C's timeline fed by the Crustdata timeline adapter (founding, claimed year, director dates, activity).
+    An explicitly configured adapter (C's offline tests) is used as configured."""
+    from backend.web import timeline
+    from backend.web.adapters import CrustdataTimelineAdapter
+    if timeline._adapter is not None:
+        return timeline.build_timeline(ctx)
+    return timeline.build_timeline(ctx, adapter=CrustdataTimelineAdapter())
 
 
 async def step_explain(ctx):

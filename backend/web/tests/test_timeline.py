@@ -231,7 +231,7 @@ def test_no_adapter_no_dates_produces_only_evaluation_and_no_flags(setup, monkey
     result = run(setup)
     assert [e["kind"] for e in result["events"]] == ["evaluation"]
     assert all(e["flag"] == "none" for e in result["evidence"])
-    assert result["integration"]["b_adapter_configured"] is False
+    assert result["integration"]["b_adapter_configured"] is True   # Lead: the live Crustdata adapter is used when none is configured
 
 
 def test_matching_news_included_but_namesakes_not_vendor_activity(setup):
