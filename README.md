@@ -71,7 +71,7 @@ Director enrichment is limited to at most two people and the intended fields; us
 |---|---|---|
 | T1–T8 | See [tests/cases.md](tests/cases.md) | Pending integration with live data steps and client records |
 
-The reserved fixtures test behavior only and do not imply a live company check. The organizer kickoff kit/client records are absent; the field mapping in `backend/config.yaml` is temporary. `tests/cases.inputs.json` contains direct `POST /runs` bodies, while [tests/cases.cli.json](tests/cases.cli.json) uses the current CLI/config mapping and is not claimed to be the organizer's final kickoff schema. Run the offline suite with `PYTHONPATH=. .venv/bin/pytest -q`; latest merged run: **83 passed**. Live expected-versus-actual case results remain pending. The two-minute demo plan is at [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md); the recording is pending.
+The reserved fixtures test behavior only and do not imply a live company check. The organizer kickoff kit/client records are absent; the field mapping in `backend/config.yaml` is temporary. `tests/cases.inputs.json` contains direct `POST /runs` bodies, while [tests/cases.cli.json](tests/cases.cli.json) uses the current CLI/config mapping and is not claimed to be the organizer's final kickoff schema. Run the offline suite with `PYTHONPATH=. .venv/bin/pytest -q`; latest merged run: **88 passed**. Live expected-versus-actual case results remain pending. The two-minute demo plan is at [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md); the recording is pending.
 
 ★ **Demo video:** Pending. No hosted video URL exists yet; record only after the live data/web integrations are in place. Do not show fixture or stub output as a live check.
 
