@@ -21,6 +21,11 @@ async def step_timeline(ctx):
     return build_timeline(ctx)
 
 
+async def step_explain(ctx):
+    from backend.web.explain import explain_verdict
+    return await explain_verdict(ctx)
+
+
 def _content(data):
     """Accept only explicit full-page fields; snippets are not page content."""
     if isinstance(data, str):
