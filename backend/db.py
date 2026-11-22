@@ -233,6 +233,18 @@ def mark_run_started(run_id: int, step_name: str):
         )
 
 
+def update_run_input(run_id: int, input_data: dict):
+    with connect() as conn:
+        conn.execute("UPDATE runs SET input_json = ?, updated_at = ? WHERE id = ?",
+                     (json.dumps(input_data), now(), run_id))
+
+
+def delete_step(run_id: int, step_name: str):
+    """Forget a step's checkpoint so it runs again (used after a person supplies missing input)."""
+    with connect() as conn:
+        conn.execute("DELETE FROM steps WHERE run_id = ? AND step_name = ?", (run_id, step_name))
+
+
 def set_run_limits(run_id: int, limits: dict):
     """Apply the current config's ceilings to this run (config is re-read every run)."""
     with connect() as conn:

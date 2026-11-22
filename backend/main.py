@@ -12,7 +12,7 @@ from typing import Literal
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend import db
 from backend.config import load_config
@@ -38,11 +38,25 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # ---------- request bodies ----------
 
 class RunInput(BaseModel):
-    name: str = Field(min_length=1)
+    """Structured fields and/or the request in the client's own words (intake extracts from it)."""
+    name: str | None = None
     website: str | None = None
     director: str | None = None
     claimed_year: int | None = None
     request_text: str | None = None
+
+    @model_validator(mode="after")
+    def something_to_go_on(self):
+        if not (self.name or self.website or self.request_text):
+            raise ValueError("give a vendor name, a website, or the request text")
+        return self
+
+
+class MissingInput(BaseModel):
+    name: str | None = None
+    website: str | None = None
+    director: str | None = None
+    claimed_year: int | None = None
 
 
 class CandidateChoice(BaseModel):
@@ -125,6 +139,21 @@ def select_candidate(run_id: int, body: CandidateChoice):
     db.update_step_output(run_id, "resolve", resolve)
     db.set_run_status(run_id, "queued", f"candidate {body.index} picked, continuing")
     return {"id": run_id, "status": "queued", "chosen": resolve["chosen"]}
+
+
+@app.post("/runs/{run_id}/input")
+def provide_input(run_id: int, body: MissingInput):
+    """A person supplies what intake couldn't find; the run continues from intake."""
+    run = _run_or_404(run_id)
+    if run["status"] != "awaiting_input":
+        raise HTTPException(409, f"run is '{run['status']}', not waiting for input")
+    given = {k: v for k, v in body.model_dump().items() if v not in (None, "")}
+    if not (given.get("name") or given.get("website") or run["input"].get("name") or run["input"].get("website")):
+        raise HTTPException(400, "still need a vendor name or website")
+    db.update_run_input(run_id, {**run["input"], **given})
+    db.delete_step(run_id, "intake")
+    db.set_run_status(run_id, "queued", f"input added by a person: {sorted(given)}")
+    return {"id": run_id, "status": "queued", "input": {**run["input"], **given}}
 
 
 @app.post("/runs/{run_id}/approve")

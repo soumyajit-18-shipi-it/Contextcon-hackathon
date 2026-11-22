@@ -17,6 +17,7 @@ from backend.engine import stubs
 
 # (step name, module that owns it). The function is always called step_<name>.
 STEPS = [
+    ("intake", "backend.engine.intake"),      # Lead: client's words -> our input fields
     ("resolve", "backend.data.steps"),        # B
     ("duplicate", "backend.engine.duplicate"),  # Lead
     ("company", "backend.data.steps"),        # B
@@ -145,6 +146,15 @@ async def process_run(run_id: int):
             db.finish_step(run_id, step_name, "failed", output)
             outputs[step_name] = output
             continue
+
+        if step_name == "intake" and output.get("input"):   # later steps see the completed input
+            db.update_run_input(run_id, output["input"])
+            ctx["input"] = output["input"]
+
+        if output.get("await_input"):             # not enough to go on: a person adds the name/website
+            db.finish_step(run_id, step_name, "held", {k: v for k, v in output.items() if k != "evidence"})
+            db.set_run_status(run_id, "awaiting_input", output["await_input"])
+            return
 
         if output.get("hold"):                    # e.g. credits ran out (402): stop, don't checkpoint
             db.finish_step(run_id, step_name, "held", {"hold": output["hold"]})

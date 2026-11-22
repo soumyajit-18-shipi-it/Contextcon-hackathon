@@ -38,8 +38,8 @@ def load_cases(path: str, cfg: dict) -> list[tuple[str, dict]]:
     for i, case in enumerate(cases):
         case_id = str(case.get(fmt["case_id_field"]) or f"case-{i + 1}")
         our_input = {ours: case.get(theirs) for ours, theirs in cfg["input_fields"].items()}
-        if not our_input.get("name"):
-            raise ValueError(f"case {case_id}: missing vendor name (field '{cfg['input_fields']['name']}')")
+        if not (our_input.get("name") or our_input.get("website") or our_input.get("request_text")):
+            raise ValueError(f"case {case_id}: needs a vendor name, website or request text")
         result.append((case_id, our_input))
     return result
 
