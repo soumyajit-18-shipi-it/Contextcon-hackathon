@@ -7,13 +7,27 @@ from backend.web.textutil import about_url, fragment_link, page_text, public_url
 
 
 async def step_media(ctx):
-    from backend.web.media import screen_media
-    return await screen_media(ctx)
+    """Live news screen on Crustdata web search (backend/web/media_live.py).
+    An explicitly configured media adapter (C's offline tests) uses C's original screen."""
+    from backend.web import media
+    if media._adapter is not None:
+        return await media.screen_media(ctx)
+    from backend.web.media_live import screen_media_live
+    return await screen_media_live(ctx)
 
 
 async def step_copied_site(ctx):
+    """C's copied-site check with the Crustdata adapter. It may use the run's web budget minus the calls
+    reserved for the news screen, which runs after it and must not be starved.
+    An explicitly configured adapter (C's offline tests) is used as configured."""
+    from backend.web import copied_site
+    from backend.web.adapters import CrustdataCopyAdapter, LedgerWebBudget
     from backend.web.copied_site import screen_copied_site
-    return await screen_copied_site(ctx)
+    if copied_site._adapter is not None:
+        return await screen_copied_site(ctx)
+    limits = ctx["config"]["limits"]
+    budget = LedgerWebBudget(limits["web_calls_per_run"] - limits["media_web_calls"])
+    return await screen_copied_site(ctx, adapter=CrustdataCopyAdapter(), budget=budget)
 
 
 async def step_timeline(ctx):

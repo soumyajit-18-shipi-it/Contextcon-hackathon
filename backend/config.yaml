@@ -5,9 +5,12 @@
 
 # Ceilings, checked before every step. Breaching one -> run status 'held'.
 limits:
-  time_limit_s: 180        # seconds of actual work (downtime during a crash is not counted)
+  time_limit_s: 300        # seconds of actual work (crash downtime not counted). Was 180: a live run with the
+                           # news screen + two slow Crustdata retries hit 181 s (Delhivery, 2026-11-22).
   credit_limit: 300        # Crustdata credits per run
   cost_limit_inr: 25       # total rupees per run (Crustdata + LLM)
+  web_calls_per_run: 8     # web search + fetch calls per run (Crustdata web limit is 10/min)
+  media_web_calls: 2       # of those, kept for the news screen (copied-site may not use them)
 
 # Thresholds used by the checks (B, C and Lead read these; no numbers in code).
 rules:
@@ -26,6 +29,8 @@ rules:
   flag_no_recent_hiring: soft  # severity when there are no postings in the window (soft | none)
   min_monthly_visitors: 100    # web traffic below this -> soft
   headcount_trend_months: 12   # headcount must have changed at least once in this many months
+  media_results_per_query: 5   # search results per news query that are read
+  media_sources: [news]        # adverse media = news only (forum posts / social complaints are not screened)
 
 # Verdict rules (backend/engine/verdict.py). Plain code, no LLM.
 verdict_rules:

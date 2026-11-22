@@ -45,7 +45,7 @@ def setup(tmp_path, monkeypatch):
     adapter = FixtureAdapter()
     media.configure_media_adapter(adapter)
 
-    async def search(run_id, query):
+    async def search(run_id, query, sources=None):
         state["calls"].append(("search", query))
         status = state["search_status"]
         if isinstance(status, list):
@@ -281,12 +281,14 @@ def test_namesake_clear_threshold_is_configured(setup):
     assert run(setup)["media_hits"][0]["label"] == "unresolved"
 
 
-def test_unconfigured_adapter_never_makes_provider_calls(setup, monkeypatch):
+def test_unconfigured_adapter_uses_the_live_screen(setup, monkeypatch):
+    """Changed by the Lead: with no test adapter configured, step_media runs the live Crustdata screen
+    (backend/web/media_live.py) instead of returning 'adapter unavailable'."""
     monkeypatch.setattr(media, "_adapter", None)
     result = asyncio.run(steps.step_media(setup[0]))
-    assert setup[1]["calls"] == []
-    assert result["evidence"][0]["status"] == "unknown"
-    assert "contracts" in result["evidence"][0]["missing"]
+    assert [c[0] for c in setup[1]["calls"]][:1] == ["search"]
+    assert all(e["check"] == "adverse_media" for e in result["evidence"])
+    assert not any("contracts" in (e.get("missing") or "") for e in result["evidence"])
 
 
 def test_engine_discovers_media_and_unresolved_causes_review(setup):

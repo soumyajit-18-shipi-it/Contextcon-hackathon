@@ -33,10 +33,12 @@ async def _call(run_id, endpoint, payload):
     return result
 
 
-async def search(run_id, query):
+async def search(run_id, query, sources=None):
+    """sources: optional Crustdata source filter, e.g. ["news"] (default: all sources)."""
     if not isinstance(query, str) or not query.strip():
         return unavailable("Search query is missing")
-    return await _call(run_id, "/web/search/live", {"query": query})
+    payload = {"query": query, **({"sources": list(sources)} if sources else {})}
+    return await _call(run_id, "/web/search/live", payload)
 
 
 async def fetch(run_id, url):
