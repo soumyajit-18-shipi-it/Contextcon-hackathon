@@ -1,4 +1,4 @@
-"""Engine tests (Lead). Mock data lives only here. Run: .venv/Scripts/python -m pytest -q"""
+"""Engine tests (Lead). Mock data lives only here. Run: .venv/Scripts/python -m pytest -q backend"""
 import asyncio
 
 import pytest
@@ -13,12 +13,6 @@ INPUT = {"name": "Test Carrier Pvt Ltd", "website": "testcarrier.in"}
 
 class Crash(BaseException):
     """Simulates kill -9: not an Exception, so the engine can't catch it."""
-
-
-@pytest.fixture(autouse=True)
-def fresh_db(tmp_path, monkeypatch):
-    monkeypatch.setenv("VERITY_DB_PATH", str(tmp_path / "test.db"))
-    db.init_db()
 
 
 def new_run():

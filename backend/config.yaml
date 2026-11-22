@@ -33,7 +33,11 @@ verdict_rules:
 
 # Crustdata pricing, for the ledger's rupee column (B's ledger.py reads this).
 pricing:
-  inr_per_credit: 0.0          # TODO Lead: fill from Crustdata's pricing page (sourced number)
+  # PLACEHOLDER, NOT A SOURCED NUMBER. Crustdata publishes no public price per credit.
+  # Get the real figure from the ContextCon dashboard credits page or the Crustdata team,
+  # and until then the README must say any rupee cost is an assumption.
+  inr_per_credit: 0.0
+  inr_per_credit_is_placeholder: true
 
 # Our field -> kickoff output field. PLACEHOLDERS until docs/kickoff/ arrives.
 # Left side = the name in the kickoff output format, right side = where we take it from.
