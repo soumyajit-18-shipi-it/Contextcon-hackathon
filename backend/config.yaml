@@ -99,13 +99,19 @@ output_fields:
   status_reason: run.status_reason
   run_id: run.id
 
-client:
-  name: TBD                                 # from the kickoff kit
-  records_path: data/client_records.json    # .json (list, or {"vendors": [...]}) or .csv; reloaded when it changes
-  # Our field -> column/key name in the client's records file. TEMPORARY until the kickoff kit.
-  record_fields:
-    name: name
-    domain: website
-    director: director
-    gstin: gstin
-  extra_rules: []
+# ---- Clients: one block per client_id. A run uses its client's block (default: "default"). ----
+# A client may override any keys of: limits, rules, verdict_rules, batch_format, input_fields, output_fields.
+# Only the keys it sets change; everything else comes from the sections above.
+clients:
+  default:                                    # the kickoff client (details from the kit)
+    name: TBD
+    records_path: data/client_records.json    # .json (list, or {"vendors": [...]}) or .csv; reloaded when it changes
+    # Our field -> column/key name in this client's records file. TEMPORARY until the kickoff kit.
+    record_fields: {name: name, domain: website, director: director, gstin: gstin}
+  # A second client is one more block, for example:
+  # example_bank:
+  #   name: Example Bank
+  #   records_path: data/example_bank_vendors.csv
+  #   record_fields: {name: vendor, domain: url, director: md, gstin: gstin}
+  #   limits: {credit_limit: 150}
+  #   verdict_rules: {required_for_clear: [adverse_media, copied_site]}

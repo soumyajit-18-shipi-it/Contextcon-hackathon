@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, model_validator
 
 from backend import db
-from backend.config import load_config
+from backend.config import UnknownClient, load_config
 from backend.engine import orchestrator
 from backend.web.anthropic_transport import configure_llm
 
@@ -44,6 +44,7 @@ class RunInput(BaseModel):
     director: str | None = None
     claimed_year: int | None = None
     request_text: str | None = None
+    client_id: str = "default"
 
     @model_validator(mode="after")
     def something_to_go_on(self):
@@ -82,8 +83,12 @@ def _run_or_404(run_id: int) -> dict:
 
 @app.post("/runs")
 def create_run(body: RunInput):
-    run_id = db.create_run(body.model_dump(), load_config()["limits"])
-    db.log_event(run_id, "run_created", source="api")
+    try:
+        cfg = load_config(body.client_id)
+    except UnknownClient as e:
+        raise HTTPException(400, str(e))
+    run_id = db.create_run(body.model_dump(exclude={"client_id"}), cfg["limits"], client_id=body.client_id)
+    db.log_event(run_id, "run_created", source="api", client_id=body.client_id)
     return {"id": run_id, "status": "queued"}
 
 
