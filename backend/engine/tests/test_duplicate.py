@@ -69,6 +69,21 @@ def test_submitted_twice_matches_the_earlier_run():
     assert out["duplicate_of"] == "run #1"
 
 
+def test_unresolvable_vendor_on_client_books_still_holds_as_duplicate(monkeypatch):
+    add_vendor("Shree Ganesh Roadways Pvt Ltd", "shreeganeshroadways.in", "Amit Verma")
+
+    async def nothing_found(ctx):
+        return {"by_domain": None, "by_name": None, "candidates": [], "chosen": None, "match_confidence": None}
+
+    steps = [(n, nothing_found if n == "resolve" else f) for n, f in orchestrator.get_step_functions()]
+    monkeypatch.setattr(orchestrator, "get_step_functions", lambda: steps)
+    run_id = db.create_run({"name": "SG Roadways", "website": "shreeganeshroadways.in"}, load_config()["limits"])
+    asyncio.run(orchestrator.drain_queue())
+    v = db.get_verdict(run_id)
+    assert (v["verdict"], v["flags"]["rule"]) == ("HOLD FOR REVIEW", "1_exact_duplicate")
+    assert db.get_run(run_id)["duplicate_of"]
+
+
 def test_duplicate_run_holds_and_cannot_be_cleared_via_api():
     add_vendor("Shree Ganesh Roadways Pvt Ltd", "shreeganeshroadways.in", "Amit Verma")
     run_id = db.create_run({"name": "Shree Ganesh Roadways", "website": "shreeganeshroadways.in"},
@@ -76,6 +91,7 @@ def test_duplicate_run_holds_and_cannot_be_cleared_via_api():
     asyncio.run(orchestrator.drain_queue())
     run = db.get_run(run_id)
     assert run["status"] == "awaiting_approval" and run["duplicate_of"]
+    assert db.get_verdict(run_id)["verdict"] == "HOLD FOR REVIEW"   # B/C still stubbed: core checks cant_verify
 
     client = TestClient(app)   # no `with`: the background worker is not started
     r = client.post(f"/runs/{run_id}/approve", json={"decision": "clear", "reason": "looks fine", "user": "lead"})

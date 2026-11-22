@@ -33,7 +33,9 @@ STEPS = [
 ]
 
 # If the company can't be found at all, these are skipped and we go straight to the verdict.
-SKIP_WHEN_NOT_FOUND = ["duplicate", "company", "director", "site", "core_checks",
+# (duplicate is NOT skipped: it only reads local client records, costs nothing, and an
+#  unresolvable vendor that is already on the client's books must still be caught.)
+SKIP_WHEN_NOT_FOUND = ["company", "director", "site", "core_checks",
                        "lookalike", "copied_site", "media", "timeline"]
 
 POLL_SECONDS = 1.0

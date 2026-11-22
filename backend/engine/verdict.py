@@ -2,14 +2,16 @@
 
 Rules are checked top to bottom; the first that matches decides:
   0. the company lookup itself failed (source down)       -> HOLD FOR REVIEW   (unknown is never "not found")
-  1. not resolved, or every core fact is cant_verify      -> CANNOT VERIFY
-  2. hard >= 2, or 1 hard + soft >= 2                     -> SUSPECTED FRONT
+  1. same domain as a client vendor (exact duplicate)     -> HOLD FOR REVIEW   (even if nothing else verifies;
+                                                             the API also refuses to clear it)
+  2. not resolved, or every core fact is cant_verify      -> CANNOT VERIFY
+  3. hard >= 2, or 1 hard + soft >= 2                     -> SUSPECTED FRONT
      (counted as DISTINCT checks, so one check can never make a front on its own;
       duplicate flags never count here: a known vendor is not a fraud, it goes to HOLD)
-  3. duplicate | candidates pending | key source unknown |
+  4. duplicate | candidates pending | key source unknown |
      unresolved media hit | failed step | any hard | soft -> HOLD FOR REVIEW
-  4. resolved + director confirmed + active + no hard     -> CLEARED
-  5. anything else                                        -> HOLD FOR REVIEW   (never guess)
+  5. resolved + director confirmed + active + no hard     -> CLEARED
+  6. anything else                                        -> HOLD FOR REVIEW   (never guess)
 """
 from backend import db
 
@@ -58,21 +60,29 @@ def decide(evidence: list[dict], outputs: dict, media_hits: list[dict], cfg: dic
     if "resolve" in failed_steps:
         return result(HOLD, "0_lookup_failed", ["Company lookup failed (source unavailable); not the same as not found"], [])
 
-    # 1. Can't identify the company, or none of the core facts has a record.
+    # 1. Already a client vendor (same domain): a person must look, whatever else we could or couldn't verify.
+    exact_duplicates = [e for e in evidence if e["check"] == "duplicate_exact" and e["status"] == "verified"]
+    if exact_duplicates:
+        reasons = [f"duplicate of {duplicate.get('duplicate_of') or 'an existing client vendor'}: {e['claim']}"
+                   for e in exact_duplicates]
+        reasons += [f"also flagged: {e['claim']}" for e in hard + soft if e not in exact_duplicates]
+        return result(HOLD, "1_exact_duplicate", reasons, exact_duplicates)
+
+    # 2. Can't identify the company, or none of the core facts has a record.
     if not resolved or all(e["status"] == "cant_verify" for e in core):
         missing = [f"{e['check']}: {e['missing']}" for e in core if e["status"] == "cant_verify"]
         if not resolved:
             missing.insert(0, "company could not be resolved from the name or website given")
         if duplicate.get("duplicate_of"):
-            missing.append(f"also matches an existing vendor: {duplicate['duplicate_of']}")
-        return result(CANNOT, "1_not_resolved_or_no_core_facts", missing, core)
+            missing.append(f"also matches an earlier check: {duplicate['duplicate_of']}")
+        return result(CANNOT, "2_not_resolved_or_no_core_facts", missing, core)
 
-    # 2. Enough independent, verified red flags.
+    # 3. Enough independent, verified red flags.
     if n_front_hard >= vr["front_min_hard"] or (
             n_front_hard == 1 and n_front_soft >= vr["front_one_hard_min_soft"]):
-        return result(FRONT, "2_hard_flags", [e["claim"] for e in front_hard + front_soft], front_hard + front_soft)
+        return result(FRONT, "3_hard_flags", [e["claim"] for e in front_hard + front_soft], front_hard + front_soft)
 
-    # 3. Something a person must look at.
+    # 4. Something a person must look at.
     reasons, items = [], []
     if duplicate.get("duplicate_of") or duplicate.get("matches"):
         reasons.append(f"possible duplicate of an existing vendor: {duplicate.get('duplicate_of') or 'see matches'}")
@@ -92,15 +102,15 @@ def decide(evidence: list[dict], outputs: dict, media_hits: list[dict], cfg: dic
         reasons += [f"soft flag: {e['claim']}" for e in soft]
         items += soft
     if reasons:
-        return result(HOLD, "3_needs_review", reasons, items)
+        return result(HOLD, "4_needs_review", reasons, items)
 
-    # 4. Everything needed to clear is verified.
+    # 5. Everything needed to clear is verified.
     if resolved and director_confirmed and active and not hard:
         confirming = [e for e in evidence if passed(e)]
-        return result(CLEARED, "4_all_verified", ["company resolved, director confirmed, active, no flags"], confirming)
+        return result(CLEARED, "5_all_verified", ["company resolved, director confirmed, active, no flags"], confirming)
 
-    # 5. Not enough to clear -> never guess.
-    return result(HOLD, "5_not_enough_to_clear",
+    # 6. Not enough to clear -> never guess.
+    return result(HOLD, "6_not_enough_to_clear",
                   [f"director confirmed: {director_confirmed}, active: {active}"], [])
 
 

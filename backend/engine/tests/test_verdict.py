@@ -20,7 +20,7 @@ def test_one_hard_plus_two_soft_is_front():
     evidence = good_facts() + [ev(1, "lookalike_domain", "hard"), ev(2, "hiring_activity", "soft"),
                                ev(3, "director_recent", "soft")]
     v = decide(evidence, RESOLVED, [], CFG)
-    assert v["verdict"] == "SUSPECTED FRONT" and v["rule"] == "2_hard_flags"
+    assert v["verdict"] == "SUSPECTED FRONT" and v["rule"] == "3_hard_flags"
     assert set(v["evidence_ids"]) == {1, 2, 3}             # the exact evidence behind the verdict
 
 
@@ -35,6 +35,22 @@ def test_duplicate_is_hold_never_front():
     v = decide(evidence, outputs, [], CFG)
     assert v["verdict"] == "HOLD FOR REVIEW"
     assert any("duplicate" in r for r in v["reasons"])
+
+
+def test_exact_duplicate_beats_cannot_verify():
+    """Nothing else verifies (core checks cant_verify, not even resolved), but the domain is a client vendor's."""
+    evidence = [ev(1, "duplicate_exact", "hard"), ev(2, "director_current_role", status="cant_verify"),
+                ev(3, "domain_matches_record", status="cant_verify")]
+    outputs = {"resolve": {"chosen": None, "candidates": []},
+               "duplicate": {"duplicate_of": "client vendor #4 Shree Ganesh Roadways", "matches": [{}]}}
+    v = decide(evidence, outputs, [], CFG)
+    assert (v["verdict"], v["rule"]) == ("HOLD FOR REVIEW", "1_exact_duplicate")
+    assert v["evidence_ids"] == [1] and "client vendor #4" in v["reasons"][0]
+
+
+def test_unverified_duplicate_claim_does_not_trigger_rule_1():
+    evidence = [ev(1, "duplicate_exact", "hard", status="cant_verify")]
+    assert decide(evidence, {"resolve": {"chosen": None}}, [], CFG)["verdict"] == "CANNOT VERIFY"
 
 
 def test_duplicate_alone_blocks_cleared():
@@ -64,7 +80,7 @@ def test_lookup_failed_is_hold_not_cannot_verify():
 
 def test_missing_activity_is_hold_not_cleared():
     evidence = [ev(1, "director_current_role"), ev(2, "domain_matches_record")]
-    assert decide(evidence, RESOLVED, [], CFG)["rule"] == "5_not_enough_to_clear"
+    assert decide(evidence, RESOLVED, [], CFG)["rule"] == "6_not_enough_to_clear"
 
 
 def test_threshold_comes_from_config():
