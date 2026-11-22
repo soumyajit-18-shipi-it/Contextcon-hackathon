@@ -12,7 +12,7 @@ def _answer(items, empty_text):
     """Join the claims of the given evidence items, citing their ids."""
     if not items:
         return {"text": empty_text, "evidence_ids": []}
-    text = "; ".join(f"{e['claim']}: {e['value']} [#{e['id']}]" for e in items)
+    text = "; ".join(f"{e['claim']} [#{e['id']}]" for e in items)   # claims are already plain sentences
     return {"text": text, "evidence_ids": [e["id"] for e in items]}
 
 

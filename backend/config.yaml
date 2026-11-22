@@ -19,6 +19,13 @@ rules:
   lookalike_max_edit: 2        # edit distance at or below this -> look-alike domain
   duplicate_name_match: 90     # name score >= this + same director -> likely duplicate (soft)
   lookalike_name_min: 85       # name score >= this, different director/domain -> look-alike name (soft)
+  resolve_min_confidence: 0.9  # name-only lookup: matches at/above this are "plausible"; >1 plausible -> a person picks
+  max_candidates: 5            # candidates shown to the person
+  max_directors: 2             # Person Enrich at most this many people per run (credits)
+  hiring_window_days: 180      # job postings in this window -> hiring activity
+  flag_no_recent_hiring: soft  # severity when there are no postings in the window (soft | none)
+  min_monthly_visitors: 100    # web traffic below this -> soft
+  headcount_trend_months: 12   # headcount must have changed at least once in this many months
 
 # Verdict rules (backend/engine/verdict.py). Plain code, no LLM.
 verdict_rules:
@@ -32,6 +39,8 @@ verdict_rules:
   unknown_key_checks: [domain_matches_record, director_current_role, adverse_media]
   # Flags that send a run to HOLD but never count towards SUSPECTED FRONT (a known vendor is not a fraud)
   review_only_checks: [duplicate_exact, duplicate_likely, duplicate_past_run]
+  # Checks that must be VERIFIED before a vendor can be CLEARED; otherwise HOLD FOR REVIEW.
+  required_for_clear: [adverse_media]
 
 # Crustdata pricing, for the ledger's rupee column (B's ledger.py reads this).
 pricing:
@@ -46,12 +55,14 @@ pricing:
   usd_to_inr_is_placeholder: true
 
 # LLM used only to extract facts and write the explanation (never to decide). Prices: Anthropic list
-# price for Claude Haiku 5.5, USD per million tokens (prompts up to 100K tokens).
+# price for Claude Haiku 5.5, USD per million tokens, for prompts up to 100K tokens (ours are far smaller;
+# above 100K the price is $0.50 in / $2.50 out). Checked against the page below on 2026-11-22.
 llm:
   provider: anthropic
   model: claude-haiku-5-5
   usd_per_mtok_in: 0.10
   usd_per_mtok_out: 0.50
+  price_source: https://platform.claude.com/docs/en/about-claude/pricing
   max_output_tokens: 2000
 
 # ---- Kickoff formats: the ONLY place to remap when docs/kickoff/ arrives (all TEMPORARY now) ----
@@ -77,17 +88,30 @@ output_fields:
   verdict: verdict.verdict
   rule: verdict.rule
   reasons: verdict.reasons
-  who_runs_it: answers.who_runs_it
-  how_long_it_has_existed: answers.how_long_it_has_existed
-  is_it_trading: answers.is_it_trading
-  what_looks_off: answers.what_looks_off
-  cannot_verify: answers.cannot_verify
-  sources: answers.sources
+  who_runs_it: fn:who_runs_it
+  how_long_it_has_existed: fn:how_long_it_has_existed
+  is_it_trading: fn:is_it_trading
+  what_looks_off: fn:what_looks_off
+  cannot_verify: fn:cannot_verify_text
+  sources: fn:sources_text
   status: run.status
+  status_text: fn:status_text
   status_reason: run.status_reason
   run_id: run.id
 
-client:
-  name: TBD                                 # from the kickoff kit
-  records_path: data/client_records.json    # B's loader reads this
-  extra_rules: []
+# ---- Clients: one block per client_id. A run uses its client's block (default: "default"). ----
+# A client may override any keys of: limits, rules, verdict_rules, batch_format, input_fields, output_fields.
+# Only the keys it sets change; everything else comes from the sections above.
+clients:
+  default:                                    # the kickoff client (details from the kit)
+    name: TBD
+    records_path: data/client_records.json    # .json (list, or {"vendors": [...]}) or .csv; reloaded when it changes
+    # Our field -> column/key name in this client's records file. TEMPORARY until the kickoff kit.
+    record_fields: {name: name, domain: website, director: director, gstin: gstin}
+  # A second client is one more block, for example:
+  # example_bank:
+  #   name: Example Bank
+  #   records_path: data/example_bank_vendors.csv
+  #   record_fields: {name: vendor, domain: url, director: md, gstin: gstin}
+  #   limits: {credit_limit: 150}
+  #   verdict_rules: {required_for_clear: [adverse_media, copied_site]}

@@ -12,10 +12,10 @@ from typing import Literal
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend import db
-from backend.config import load_config
+from backend.config import UnknownClient, load_config
 from backend.engine import orchestrator
 from backend.web.anthropic_transport import configure_llm
 
@@ -38,11 +38,26 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 # ---------- request bodies ----------
 
 class RunInput(BaseModel):
-    name: str = Field(min_length=1)
+    """Structured fields and/or the request in the client's own words (intake extracts from it)."""
+    name: str | None = None
     website: str | None = None
     director: str | None = None
     claimed_year: int | None = None
     request_text: str | None = None
+    client_id: str = "default"
+
+    @model_validator(mode="after")
+    def something_to_go_on(self):
+        if not (self.name or self.website or self.request_text):
+            raise ValueError("give a vendor name, a website, or the request text")
+        return self
+
+
+class MissingInput(BaseModel):
+    name: str | None = None
+    website: str | None = None
+    director: str | None = None
+    claimed_year: int | None = None
 
 
 class CandidateChoice(BaseModel):
@@ -68,8 +83,20 @@ def _run_or_404(run_id: int) -> dict:
 
 @app.post("/runs")
 def create_run(body: RunInput):
-    run_id = db.create_run(body.model_dump(), load_config()["limits"])
+    try:
+        cfg = load_config(body.client_id)
+    except UnknownClient as e:
+        raise HTTPException(400, str(e))
+    run_id = db.create_run(body.model_dump(exclude={"client_id"}), cfg["limits"], client_id=body.client_id)
+    db.log_event(run_id, "run_created", source="api", client_id=body.client_id)
     return {"id": run_id, "status": "queued"}
+
+
+@app.get("/runs/{run_id}/events")
+def run_events(run_id: int):
+    """Structured log of the run: steps (start/end/duration/retries), checkpoints, holds, ceilings, approvals."""
+    _run_or_404(run_id)
+    return db.get_events(run_id)
 
 
 @app.get("/runs")
@@ -127,11 +154,27 @@ def select_candidate(run_id: int, body: CandidateChoice):
     return {"id": run_id, "status": "queued", "chosen": resolve["chosen"]}
 
 
+@app.post("/runs/{run_id}/input")
+def provide_input(run_id: int, body: MissingInput):
+    """A person supplies what intake couldn't find; the run continues from intake."""
+    run = _run_or_404(run_id)
+    if run["status"] != "awaiting_input":
+        raise HTTPException(409, f"run is '{run['status']}', not waiting for input")
+    given = {k: v for k, v in body.model_dump().items() if v not in (None, "")}
+    if not (given.get("name") or given.get("website") or run["input"].get("name") or run["input"].get("website")):
+        raise HTTPException(400, "still need a vendor name or website")
+    db.update_run_input(run_id, {**run["input"], **given})
+    db.delete_step(run_id, "intake")
+    db.set_run_status(run_id, "queued", f"input added by a person: {sorted(given)}")
+    return {"id": run_id, "status": "queued", "input": {**run["input"], **given}}
+
+
 @app.post("/runs/{run_id}/approve")
 def approve(run_id: int, body: Approval):
     run = _run_or_404(run_id)
     existing = db.get_approval(run_id)
     if existing:
+        db.log_event(run_id, "approval_refused", reason="already decided", attempted=body.decision, user=body.user)
         raise HTTPException(409, {"message": "already decided", "approval": existing})
     if run["status"] != "awaiting_approval":
         raise HTTPException(409, f"run is '{run['status']}', not awaiting approval")
@@ -148,6 +191,21 @@ def approve(run_id: int, body: Approval):
 def ledger(run_id: int | None = None):
     rows = db.get_ledger(run_id)
     return {"rows": rows, "summary": db.ledger_summary(run_id) if run_id is not None else None}
+
+
+@app.get("/stats")
+def stats():
+    """Measured cost per check from the ledger/runs (the finance numbers), with placeholder rates marked."""
+    pricing = load_config()["pricing"]
+    placeholders = [name for name in ("inr_per_credit", "usd_to_inr") if pricing.get(f"{name}_is_placeholder")]
+    return {
+        **db.run_stats(),
+        "pricing": {"inr_per_credit": pricing["inr_per_credit"], "usd_to_inr": pricing["usd_to_inr"],
+                    "placeholders": placeholders},
+        "note": ("Rupee figures use placeholder rates (" + ", ".join(placeholders) + "): credits and seconds are "
+                 "measured; rupees are not final until those rates are sourced.") if placeholders
+                else "All rates sourced.",
+    }
 
 
 @app.get("/credits")

@@ -139,7 +139,8 @@ RESOLVED = {"resolve": {"chosen": {"name": "X"}}}
 
 
 def test_verdict_cleared():
-    evidence = [ev(1, "director_current_role"), ev(2, "headcount_present"), ev(3, "domain_matches_record")]
+    evidence = [ev(1, "director_current_role"), ev(2, "headcount_present"), ev(3, "domain_matches_record"),
+                ev(4, "adverse_media")]
     assert decide(evidence, RESOLVED, [], load_config())["verdict"] == "CLEARED"
 
 
