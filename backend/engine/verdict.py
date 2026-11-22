@@ -4,8 +4,10 @@ Rules are checked top to bottom; the first that matches decides:
   0. the company lookup itself failed (source down)       -> HOLD FOR REVIEW   (unknown is never "not found")
   1. not resolved, or every core fact is cant_verify      -> CANNOT VERIFY
   2. hard >= 2, or 1 hard + soft >= 2                     -> SUSPECTED FRONT
+     (counted as DISTINCT checks, so one check can never make a front on its own;
+      duplicate flags never count here: a known vendor is not a fraud, it goes to HOLD)
   3. duplicate | candidates pending | key source unknown |
-     unresolved media hit | failed step | 1 hard | soft   -> HOLD FOR REVIEW
+     unresolved media hit | failed step | any hard | soft -> HOLD FOR REVIEW
   4. resolved + director confirmed + active + no hard     -> CLEARED
   5. anything else                                        -> HOLD FOR REVIEW   (never guess)
 """
@@ -29,6 +31,11 @@ def decide(evidence: list[dict], outputs: dict, media_hits: list[dict], cfg: dic
 
     hard = [e for e in evidence if e["flag"] == "hard" and e["status"] == "verified"]
     soft = [e for e in evidence if e["flag"] == "soft"]
+    # For SUSPECTED FRONT: leave out review-only checks (duplicates), count each check once.
+    front_hard = [e for e in hard if e["check"] not in vr["review_only_checks"]]
+    front_soft = [e for e in soft if e["check"] not in vr["review_only_checks"]]
+    n_front_hard = len({e["check"] for e in front_hard})
+    n_front_soft = len({e["check"] for e in front_soft})
     core = [e for e in evidence if e["check"] in vr["core_checks"]]
     unknown_key = [e for e in evidence if e["check"] in vr["unknown_key_checks"] and e["status"] == "unknown"]
     failed_steps = [name for name, out in outputs.items() if out.get("failed")]
@@ -44,7 +51,8 @@ def decide(evidence: list[dict], outputs: dict, media_hits: list[dict], cfg: dic
     def result(verdict, rule, reasons, items):
         return {"verdict": verdict, "rule": rule, "reasons": reasons, "evidence_ids": _ids(items),
                 "facts": {"resolved": resolved, "director_confirmed": director_confirmed, "active": active,
-                          "hard": len(hard), "soft": len(soft)}}
+                          "hard": len(hard), "soft": len(soft),
+                          "front_hard_checks": n_front_hard, "front_soft_checks": n_front_soft}}
 
     # 0. The lookup failed (timeout/error) -> we don't know, so a person looks.
     if "resolve" in failed_steps:
@@ -55,11 +63,14 @@ def decide(evidence: list[dict], outputs: dict, media_hits: list[dict], cfg: dic
         missing = [f"{e['check']}: {e['missing']}" for e in core if e["status"] == "cant_verify"]
         if not resolved:
             missing.insert(0, "company could not be resolved from the name or website given")
+        if duplicate.get("duplicate_of"):
+            missing.append(f"also matches an existing vendor: {duplicate['duplicate_of']}")
         return result(CANNOT, "1_not_resolved_or_no_core_facts", missing, core)
 
     # 2. Enough independent, verified red flags.
-    if len(hard) >= vr["front_min_hard"] or (len(hard) == 1 and len(soft) >= vr["front_one_hard_min_soft"]):
-        return result(FRONT, "2_hard_flags", [e["claim"] for e in hard + soft], hard + soft)
+    if n_front_hard >= vr["front_min_hard"] or (
+            n_front_hard == 1 and n_front_soft >= vr["front_one_hard_min_soft"]):
+        return result(FRONT, "2_hard_flags", [e["claim"] for e in front_hard + front_soft], front_hard + front_soft)
 
     # 3. Something a person must look at.
     reasons, items = [], []
@@ -74,8 +85,8 @@ def decide(evidence: list[dict], outputs: dict, media_hits: list[dict], cfg: dic
         reasons.append(f"{len(unresolved_media)} news hit(s) could not be matched or cleared")
     for name in failed_steps:
         reasons.append(f"step '{name}' failed; its checks are unknown")
-    if len(hard) == 1:
-        reasons.append(f"one hard flag: {hard[0]['claim']}")
+    if hard:
+        reasons += [f"hard flag: {e['claim']}" for e in hard]
         items += hard
     if soft:
         reasons += [f"soft flag: {e['claim']}" for e in soft]
