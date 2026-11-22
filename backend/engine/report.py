@@ -2,23 +2,10 @@
 
 Every answer only repeats evidence items and cites their ids. No new claims are made here.
 """
-import importlib
-
 from backend import db
 from backend.engine import stubs
 
 ACTIVITY = ["headcount_present", "headcount_trend", "hiring_activity", "web_traffic"]
-
-
-def _load_build_output():
-    """B owns the mapping to the kickoff format; use the stub until backend/data/output_map.py exists."""
-    try:
-        output_map = importlib.import_module("backend.data.output_map")
-    except ModuleNotFoundError as e:
-        if e.name != "backend.data.output_map":   # the file exists but is broken: show that error
-            raise
-        return stubs.build_output
-    return getattr(output_map, "build_output", stubs.build_output)
 
 
 def _answer(items, empty_text):
@@ -78,7 +65,8 @@ async def step_report(ctx):
     answers = build_answers(evidence)
     report_md = build_report_md(run, verdict, answers, explanation, stub_steps)
     run_after = {**run, "status": "awaiting_approval"}   # the report is the last step; this is the next state
-    output = _load_build_output()(
+    build_output = stubs.owned_or_stub("backend.data.output_map", "build_output")   # B owns the mapping
+    output = build_output(
         {"input": run["input"], "verdict": verdict, "answers": answers, "run": run_after},
         ctx["config"]["output_fields"],
     )

@@ -422,6 +422,17 @@ def add_source(run_id, kind, endpoint=None, url=None, request=None, raw_response
         return cur.lastrowid
 
 
+def find_or_add_source(run_id, kind, url, raw_response, record_date=None) -> int:
+    """For local records (client vendors, past runs): reuse this run's existing source row for the same
+    url, so re-running a step after a crash doesn't pile up identical sources."""
+    with connect() as conn:
+        row = conn.execute("SELECT id FROM sources WHERE run_id = ? AND kind = ? AND url = ?",
+                           (run_id, kind, url)).fetchone()
+    if row:
+        return row["id"]
+    return add_source(run_id, kind, endpoint=kind, url=url, raw_response=raw_response, record_date=record_date)
+
+
 def get_source(source_id: int) -> dict | None:
     with connect() as conn:
         src = _row(conn.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone())

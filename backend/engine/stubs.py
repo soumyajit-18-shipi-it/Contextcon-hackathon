@@ -6,6 +6,19 @@ defines step_<name> in their own module, theirs is used automatically. Nobody ed
 Stubs never invent data: every check comes back 'cant_verify' with "STUB" in `missing`,
 and every output carries "stub": True so the report lists which steps were not real.
 """
+import importlib
+import sys
+
+
+def owned_or_stub(module_name: str, func_name: str):
+    """The owner's function if their module defines it, else the stub of the same name here."""
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError as e:
+        if e.name != module_name:   # the owner's file exists but one of ITS imports is broken: show that
+            raise
+        module = None
+    return getattr(module, func_name, None) or getattr(sys.modules[__name__], func_name)
 
 
 def _not_implemented(check: str, owner: str, claim: str) -> dict:
@@ -81,6 +94,41 @@ async def step_timeline(ctx):
 async def step_explain(ctx):
     """STUB – owned by C. Real version: llm_json plain-language explanation citing evidence ids."""
     return {"stub": True, "explanation": None}
+
+
+# ---------------- STUB – owned by B (backend/data/client_records.py) ----------------
+
+_loaded_files = {}   # (client_id, path) -> file text last loaded
+
+def load_client_records(cfg: dict, client_id: str = "default") -> int:
+    """STUB – owned by B. Loads the client's vendor list (config client.records_path) into
+    client_vendors, replacing that client's rows (safe to call every run). Returns rows loaded.
+    Accepts a JSON list of vendors, or {"vendors": [...]}; each vendor uses keys
+    name / domain (or website) / director / gstin. B adapts this to the kickoff file format."""
+    import json
+    from pathlib import Path
+
+    from backend import db
+
+    path = Path(cfg["client"]["records_path"])
+    if not path.exists():
+        return 0
+    text = path.read_text(encoding="utf-8")
+    data = json.loads(text)
+    vendors = data.get("vendors", []) if isinstance(data, dict) else data
+    if _loaded_files.get((client_id, str(path))) == text:   # unchanged since last load: keep row ids stable
+        return len(vendors)
+    _loaded_files[(client_id, str(path))] = text
+    with db.connect() as conn:
+        conn.execute("DELETE FROM client_vendors WHERE client_id = ?", (client_id,))
+        for v in vendors:
+            conn.execute(
+                "INSERT INTO client_vendors (client_id, name, domain, director, gstin, other_json) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (client_id, v.get("name"), v.get("domain") or v.get("website"), v.get("director"),
+                 v.get("gstin"), json.dumps(v)),
+            )
+    return len(vendors)
 
 
 # ---------------- STUB – owned by B (backend/data/output_map.py) ----------------
