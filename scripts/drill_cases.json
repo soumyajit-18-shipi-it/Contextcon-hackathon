@@ -1,0 +1,6 @@
+{
+  "cases": [
+    {"id": "drill-1", "vendor_name": "Delhivery", "website": "https://www.delhivery.com"},
+    {"id": "drill-2", "vendor_name": "Blue Dart Express", "website": "https://www.bluedart.com"}
+  ]
+}
