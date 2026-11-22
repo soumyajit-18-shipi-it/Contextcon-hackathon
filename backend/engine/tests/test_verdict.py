@@ -11,9 +11,27 @@ def ev(i, check, flag="none", status="verified"):
 
 
 def good_facts(start=100):
-    """A resolved, active company with a confirmed director."""
+    """A resolved, active company with a confirmed director and a completed news screen."""
     return [ev(start, "director_current_role"), ev(start + 1, "headcount_present"),
-            ev(start + 2, "domain_matches_record")]
+            ev(start + 2, "domain_matches_record"), ev(start + 3, "adverse_media")]
+
+
+def test_cleared_needs_the_news_screen():
+    without_media = [e for e in good_facts() if e["check"] != "adverse_media"]
+    v = decide(without_media, RESOLVED, [], CFG)
+    assert (v["verdict"], v["rule"]) == ("HOLD FOR REVIEW", "5_required_check_missing")
+    assert v["reasons"] == ["news screen not completed"]
+
+
+def test_news_screen_not_verified_is_still_hold():
+    evidence = [e for e in good_facts() if e["check"] != "adverse_media"] + [ev(9, "adverse_media", status="cant_verify")]
+    assert decide(evidence, RESOLVED, [], CFG)["reasons"] == ["news screen not completed"]
+
+
+def test_required_for_clear_is_config():
+    cfg = {**CFG, "verdict_rules": {**CFG["verdict_rules"], "required_for_clear": ["adverse_media", "copied_site"]}}
+    v = decide(good_facts(), RESOLVED, [], cfg)
+    assert v["verdict"] == "HOLD FOR REVIEW" and v["reasons"] == ["website originality check not completed"]
 
 
 def test_one_hard_plus_two_soft_is_front():

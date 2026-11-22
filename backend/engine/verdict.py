@@ -10,7 +10,8 @@ Rules are checked top to bottom; the first that matches decides:
       duplicate flags never count here: a known vendor is not a fraud, it goes to HOLD)
   4. duplicate | candidates pending | key source unknown |
      unresolved media hit | failed step | any hard | soft -> HOLD FOR REVIEW
-  5. resolved + director confirmed + active + no hard     -> CLEARED
+  5. resolved + director confirmed + active + no hard     -> CLEARED, but only if every check in
+     verdict_rules.required_for_clear is verified; if not -> HOLD FOR REVIEW ("news screen not completed")
   6. anything else                                        -> HOLD FOR REVIEW   (never guess)
 """
 from backend import db
@@ -19,6 +20,10 @@ CLEARED = "CLEARED"
 FRONT = "SUSPECTED FRONT"
 HOLD = "HOLD FOR REVIEW"
 CANNOT = "CANNOT VERIFY"
+
+# Plain-language reason when a check that must pass before clearing hasn't been verified.
+REQUIRED_CHECK_REASONS = {"adverse_media": "news screen not completed",
+                          "copied_site": "website originality check not completed"}
 
 
 def _ids(items):
@@ -104,8 +109,14 @@ def decide(evidence: list[dict], outputs: dict, media_hits: list[dict], cfg: dic
     if reasons:
         return result(HOLD, "4_needs_review", reasons, items)
 
-    # 5. Everything needed to clear is verified.
+    # 5. Everything needed to clear is verified, including every check in verdict_rules.required_for_clear.
     if resolved and director_confirmed and active and not hard:
+        verified_checks = {e["check"] for e in evidence if e["status"] == "verified"}
+        not_done = [c for c in vr.get("required_for_clear", []) if c not in verified_checks]
+        if not_done:
+            return result(HOLD, "5_required_check_missing",
+                          [REQUIRED_CHECK_REASONS.get(c, f"required check '{c}' not completed") for c in not_done],
+                          [e for e in evidence if e["check"] in not_done])
         confirming = [e for e in evidence if passed(e)]
         return result(CLEARED, "5_all_verified", ["company resolved, director confirmed, active, no flags"], confirming)
 
