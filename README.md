@@ -225,7 +225,7 @@ Repository history starts at the kickoff commit; nothing was written beforehand.
 |---|---|
 | **Web app** (Vercel) | https://verity-app-sepia.vercel.app |
 | **API + interactive docs** (Render) | https://verity-backend-5wgj.onrender.com/docs |
-| **Demo video** | <link> |
+| **Demo video** | https://www.loom.com/share/6e2ca97f941946cdaafa58626c3b9fd7 |
 | **Repository** | https://github.com/soumyajit-18-shipi-it/Contextcon-hackathon |
 
 Notes for reviewers:
