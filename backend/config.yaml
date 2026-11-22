@@ -41,12 +41,28 @@ pricing:
   inr_per_credit: 0.0
   inr_per_credit_is_placeholder: true
 
-# Our field -> kickoff output field. PLACEHOLDERS until docs/kickoff/ arrives.
-# Left side = the name in the kickoff output format, right side = where we take it from.
+# ---- Kickoff formats: the ONLY place to remap when docs/kickoff/ arrives (all TEMPORARY now) ----
+
+# Batch files for backend/cli.py
+batch_format:
+  cases_key: cases          # input file is {"cases": [...]} (a bare list also works)
+  case_id_field: id         # each case's id; copied into its result
+  results_key: results      # output file is {"results": [...]}
+
+# Input: our field -> field name in the kickoff input
+input_fields:
+  name: vendor_name
+  website: website
+  director: director
+  claimed_year: claimed_year
+  request_text: request
+
+# Output: kickoff output field -> where we take it from (dotted path into input/verdict/answers/run).
 output_fields:
   vendor_name: input.name
   website: input.website
   verdict: verdict.verdict
+  rule: verdict.rule
   reasons: verdict.reasons
   who_runs_it: answers.who_runs_it
   how_long_it_has_existed: answers.how_long_it_has_existed
@@ -55,6 +71,8 @@ output_fields:
   cannot_verify: answers.cannot_verify
   sources: answers.sources
   status: run.status
+  status_reason: run.status_reason
+  run_id: run.id
 
 client:
   name: TBD                                 # from the kickoff kit

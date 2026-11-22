@@ -162,10 +162,10 @@ async def process_run(run_id: int):
 async def drain_queue():
     """Process queued runs until none are left (used by the CLI and tests)."""
     while (run := db.next_queued_run()) is not None:
-        await _safe_process(run["id"])
+        await process_run_safe(run["id"])
 
 
-async def _safe_process(run_id: int):
+async def process_run_safe(run_id: int):
     try:
         await process_run(run_id)
     except Exception as e:   # unexpected engine error: fail the run visibly, keep the worker alive
@@ -183,4 +183,4 @@ async def worker_loop():
         if run is None:
             await asyncio.sleep(POLL_SECONDS)
             continue
-        await _safe_process(run["id"])
+        await process_run_safe(run["id"])

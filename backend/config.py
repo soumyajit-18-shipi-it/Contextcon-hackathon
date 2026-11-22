@@ -5,7 +5,7 @@ import yaml
 
 CONFIG_PATH = Path(__file__).parent / "config.yaml"
 
-REQUIRED_SECTIONS = ["limits", "rules", "verdict_rules", "output_fields", "client"]
+REQUIRED_SECTIONS = ["limits", "rules", "verdict_rules", "batch_format", "input_fields", "output_fields", "client"]
 
 
 def load_config() -> dict:
