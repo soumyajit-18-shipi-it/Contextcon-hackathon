@@ -88,17 +88,24 @@ output_fields:
   verdict: verdict.verdict
   rule: verdict.rule
   reasons: verdict.reasons
-  who_runs_it: answers.who_runs_it
-  how_long_it_has_existed: answers.how_long_it_has_existed
-  is_it_trading: answers.is_it_trading
-  what_looks_off: answers.what_looks_off
-  cannot_verify: answers.cannot_verify
-  sources: answers.sources
+  who_runs_it: fn:who_runs_it
+  how_long_it_has_existed: fn:how_long_it_has_existed
+  is_it_trading: fn:is_it_trading
+  what_looks_off: fn:what_looks_off
+  cannot_verify: fn:cannot_verify_text
+  sources: fn:sources_text
   status: run.status
+  status_text: fn:status_text
   status_reason: run.status_reason
   run_id: run.id
 
 client:
   name: TBD                                 # from the kickoff kit
-  records_path: data/client_records.json    # B's loader reads this
+  records_path: data/client_records.json    # .json (list, or {"vendors": [...]}) or .csv; reloaded when it changes
+  # Our field -> column/key name in the client's records file. TEMPORARY until the kickoff kit.
+  record_fields:
+    name: name
+    domain: website
+    director: director
+    gstin: gstin
   extra_rules: []
