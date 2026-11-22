@@ -7,6 +7,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def no_live_api_calls(monkeypatch):
+def no_live_api_calls(monkeypatch, tmp_path):
     for key in ("CRUSTDATA_API_KEY", "LLM_API_KEY", "ANTHROPIC_API_KEY"):
         monkeypatch.setenv(key, "")
+    monkeypatch.setenv("VERITY_LOG_PATH", str(tmp_path / "runs.jsonl"))   # tests never write to logs/

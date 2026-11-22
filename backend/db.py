@@ -116,6 +116,14 @@ CREATE TABLE IF NOT EXISTS approvals (
     user     TEXT NOT NULL,
     ts       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id      INTEGER,
+    ts          TEXT NOT NULL,
+    event       TEXT NOT NULL,   -- step_start|step_end|step_error|checkpoint|status|ceiling|approval|run_created|...
+    step        TEXT,
+    detail_json TEXT
+);
 CREATE TABLE IF NOT EXISTS verdicts (
     run_id       INTEGER NOT NULL UNIQUE,
     verdict      TEXT,
@@ -221,6 +229,7 @@ def set_run_status(run_id: int, status: str, reason: str | None = None):
             "UPDATE runs SET status = ?, status_reason = ?, updated_at = ? WHERE id = ?",
             (status, reason, now(), run_id),
         )
+    log_event(run_id, "status", status=status, reason=reason)   # every status change is in the event log
 
 
 def mark_run_started(run_id: int, step_name: str):
@@ -273,6 +282,8 @@ def requeue_interrupted_runs() -> list[int]:
             "WHERE status = 'running'",
             (now(),),
         )
+    for run_id in ids:
+        log_event(run_id, "resumed_after_restart")
     return ids
 
 
@@ -533,6 +544,38 @@ def get_verdict(run_id: int) -> dict | None:
     return v
 
 
+# ---------- event log (table + logs/runs.jsonl) ----------
+
+def log_path() -> str:
+    return os.environ.get("VERITY_LOG_PATH", "logs/runs.jsonl")
+
+
+def log_event(run_id, event: str, step: str | None = None, **detail):
+    """One structured event: a row in `events` and one JSON line in logs/runs.jsonl.
+    Writing the log file can never break a run."""
+    row = {"ts": now(), "run_id": run_id, "event": event, "step": step, **detail}
+    with connect() as conn:
+        conn.execute("INSERT INTO events (run_id, ts, event, step, detail_json) VALUES (?, ?, ?, ?, ?)",
+                     (run_id, row["ts"], event, step, json.dumps(detail, default=str)))
+    try:
+        os.makedirs(os.path.dirname(log_path()) or ".", exist_ok=True)
+        with open(log_path(), "a", encoding="utf-8") as f:
+            f.write(json.dumps(row, default=str) + "\n")
+    except OSError:
+        pass
+
+
+def get_events(run_id: int) -> list[dict]:
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM events WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
+    events = []
+    for r in rows:
+        e = dict(r)
+        e["detail"] = _loads(e.pop("detail_json"))
+        events.append(e)
+    return events
+
+
 # ---------- approvals (exactly once) ----------
 
 def add_approval(run_id: int, decision: str, reason: str, user: str):
@@ -544,6 +587,7 @@ def add_approval(run_id: int, decision: str, reason: str, user: str):
         )
         conn.execute("UPDATE runs SET status = 'done', status_reason = ?, updated_at = ? WHERE id = ?",
                      (f"{decision} by {user}", now(), run_id))
+    log_event(run_id, "approval", decision=decision, reason=reason, user=user)
 
 
 def get_approval(run_id: int) -> dict | None:

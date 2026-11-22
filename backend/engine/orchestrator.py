@@ -84,15 +84,23 @@ async def run_step(run_id: int, step_name: str, func, ctx) -> tuple[dict | None,
         run = db.get_run(run_id)
         time_left = max(run["time_limit_s"] - run["elapsed_s"], 1)
         started = time.monotonic()
+        db.log_event(run_id, "step_start", step_name, attempt=attempt)
         try:
             output = await asyncio.wait_for(_call(func, ctx), timeout=time_left)
+            db.log_event(run_id, "step_end", step_name, attempt=attempt, duration_ms=_ms(started))
             return _as_dict(output), None
         except Exception as e:   # a kill (KeyboardInterrupt/SIGKILL) is NOT caught: the run stays 'running'
             error = f"{type(e).__name__}: {e}"
             print(f"[run {run_id}] step {step_name} attempt {attempt} failed: {error}")
+            db.log_event(run_id, "step_error", step_name, attempt=attempt, duration_ms=_ms(started),
+                         error=error, will_retry=attempt == 1)
         finally:
             db.add_elapsed(run_id, time.monotonic() - started)
     return None, error
+
+
+def _ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
 
 
 def failed_output(step_name: str, error: str) -> dict:
@@ -117,6 +125,7 @@ async def process_run(run_id: int):
     outputs = db.get_step_outputs(run_id)         # steps already checkpointed before a crash
     ctx = {"run_id": run_id, "client_id": run["client_id"], "input": run["input"],
            "outputs": outputs, "config": cfg}
+    db.log_event(run_id, "run_resumed" if outputs else "run_started", steps_already_done=sorted(outputs))
 
     for step_name, func in get_step_functions():
         if step_name in outputs:                  # checkpointed -> skip (this is the resume)
@@ -131,10 +140,12 @@ async def process_run(run_id: int):
             if step_name in SKIP_WHEN_NOT_FOUND:  # nothing found: go straight to the verdict
                 outputs[step_name] = {"skipped": "company not resolved"}
                 db.finish_step(run_id, step_name, "skipped", outputs[step_name])
+                db.log_event(run_id, "checkpoint", step_name, status="skipped")
                 continue
 
         reason = check_ceilings(run_id)
         if reason:
+            db.log_event(run_id, "ceiling", step_name, reason=reason)
             db.set_run_status(run_id, "held", reason)
             return
 
@@ -144,6 +155,7 @@ async def process_run(run_id: int):
         if error is not None:                     # failed twice: record 'unknown' and carry on
             output = failed_output(step_name, error)
             db.finish_step(run_id, step_name, "failed", output)
+            db.log_event(run_id, "checkpoint", step_name, status="failed", error=error)
             outputs[step_name] = output
             continue
 
@@ -162,6 +174,7 @@ async def process_run(run_id: int):
             return
 
         db.finish_step(run_id, step_name, "done", output)   # CHECKPOINT
+        db.log_event(run_id, "checkpoint", step_name, status="done", evidence=len(output.get("evidence", [])))
         outputs[step_name] = output
         if step_name == "duplicate" and output.get("duplicate_of"):
             db.set_duplicate_of(run_id, output["duplicate_of"])

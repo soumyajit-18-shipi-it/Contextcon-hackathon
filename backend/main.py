@@ -83,7 +83,15 @@ def _run_or_404(run_id: int) -> dict:
 @app.post("/runs")
 def create_run(body: RunInput):
     run_id = db.create_run(body.model_dump(), load_config()["limits"])
+    db.log_event(run_id, "run_created", source="api")
     return {"id": run_id, "status": "queued"}
+
+
+@app.get("/runs/{run_id}/events")
+def run_events(run_id: int):
+    """Structured log of the run: steps (start/end/duration/retries), checkpoints, holds, ceilings, approvals."""
+    _run_or_404(run_id)
+    return db.get_events(run_id)
 
 
 @app.get("/runs")
@@ -161,6 +169,7 @@ def approve(run_id: int, body: Approval):
     run = _run_or_404(run_id)
     existing = db.get_approval(run_id)
     if existing:
+        db.log_event(run_id, "approval_refused", reason="already decided", attempted=body.decision, user=body.user)
         raise HTTPException(409, {"message": "already decided", "approval": existing})
     if run["status"] != "awaiting_approval":
         raise HTTPException(409, f"run is '{run['status']}', not awaiting approval")
